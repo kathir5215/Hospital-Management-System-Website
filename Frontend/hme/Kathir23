@@ -1,0 +1,1348 @@
+// package com.kathirvel.HME.Config;
+
+// import com.kathirvel.HME.Model.User;
+// import com.kathirvel.HME.Repositary.UserRepository;
+// import lombok.AllArgsConstructor;
+// import org.springframework.security.core.userdetails.UserDetails;
+// import org.springframework.security.core.userdetails.UserDetailsService;
+// import org.springframework.security.core.userdetails.UsernameNotFoundException;
+// import org.springframework.stereotype.Service;
+// @Service
+// @AllArgsConstructor
+// public class CustomerUserDetailsService implements UserDetailsService {
+
+//     private final UserRepository userRepository;
+
+//     @Override
+//     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+//         User appUser = userRepository.findByUsername(username)
+//                 .orElseThrow(() -> new UsernameNotFoundException("User Not Found"));
+
+//         return new CustomUserDetails(appUser);
+//     }
+// }
+// package com.kathirvel.HME.Config;
+
+// import com.kathirvel.HME.Model.User;
+// import org.springframework.security.core.GrantedAuthority;
+// import org.springframework.security.core.authority.SimpleGrantedAuthority;
+// import org.springframework.security.core.userdetails.UserDetails;
+
+// import java.util.Collection;
+// import java.util.stream.Collectors;
+
+// public class CustomUserDetails implements UserDetails {
+
+//     private final User user;
+
+//     public CustomUserDetails(User user) {
+//         this.user = user;
+//     }
+
+//     public User getUser() {
+//         return user;
+//     }
+
+//     @Override
+//     public Collection<? extends GrantedAuthority> getAuthorities() {
+//         return user.getRoles().stream()
+//                 .map(role -> new SimpleGrantedAuthority(role.name()))
+//                 .collect(Collectors.toList());
+//     }
+
+//     @Override
+//     public String getPassword() {
+//         return user.getPassword();
+//     }
+
+//     @Override
+//     public String getUsername() {
+//         return user.getUsername();
+//     }
+
+//     @Override
+//     public boolean isAccountNonExpired() {
+//         return true;
+//     }
+
+//     @Override
+//     public boolean isAccountNonLocked() {
+//         return true;
+//     }
+
+//     @Override
+//     public boolean isCredentialsNonExpired() {
+//         return true;
+//     }
+
+//     @Override
+//     public boolean isEnabled() {
+//         return true;
+//     }
+// }
+// package com.kathirvel.HME.Config;
+
+// import jakarta.servlet.FilterChain;
+// import jakarta.servlet.ServletException;
+// import jakarta.servlet.http.HttpServletRequest;
+// import jakarta.servlet.http.HttpServletResponse;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.authority.SimpleGrantedAuthority;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.stereotype.Component;
+// import org.springframework.web.filter.OncePerRequestFilter;
+
+// import java.io.IOException;
+// import java.util.ArrayList;
+// import java.util.List;
+// import java.util.stream.Collectors;
+// @Component
+// public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+//     @Autowired
+//     private JwtUtil jwtutil;
+
+//     @Override
+//     protected void doFilterInternal(HttpServletRequest request,
+//                                     HttpServletResponse response,
+//                                     FilterChain filterChain)
+//             throws ServletException, IOException {
+
+//         String authHeader = request.getHeader("Authorization");
+//         String jwtToken = null;
+//         String username = null;
+
+//         if (authHeader != null && authHeader.startsWith("Bearer ")) {
+//             jwtToken = authHeader.substring(7);
+//             try {
+//                 username = jwtutil.extractUsername(jwtToken);
+//             } catch (Exception e) {
+//                 System.out.println("Invalid JWT token: " + e.getMessage());
+//             }
+//         }
+
+//         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+//             if (jwtutil.validateToken(jwtToken, username)) {
+//                 List<String> roles = jwtutil.extractRoles(jwtToken);
+//                 List<SimpleGrantedAuthority> authorities = roles.stream()
+//                         .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+//                         .collect(Collectors.toList());
+
+//                 UsernamePasswordAuthenticationToken authToken =
+//                         new UsernamePasswordAuthenticationToken(username, null, authorities);
+//                 SecurityContextHolder.getContext().setAuthentication(authToken);
+//             }
+//         }
+//         filterChain.doFilter(request, response);
+//     }
+// }
+
+// package com.kathirvel.HME.Config;
+
+// import io.jsonwebtoken.*;
+// import io.jsonwebtoken.security.Keys;
+// import jakarta.annotation.PostConstruct;
+
+// import org.springframework.beans.factory.annotation.Value;
+// import org.springframework.stereotype.Component;
+
+// import javax.crypto.SecretKey;
+// import java.nio.charset.StandardCharsets;
+// import java.util.*;
+// import java.util.function.Function;
+
+// @Component
+// public class JwtUtil {
+
+//     @Value("${jwt.secret}")
+//     private String secret;
+
+//     private SecretKey key;
+
+//     private final long jwtExpirationInMs = 36000000;
+
+//     @PostConstruct
+//     public void init() {
+//         byte[] decodedKey = Base64.getDecoder().decode(secret);
+//         this.key = Keys.hmacShaKeyFor(decodedKey);
+//     }
+
+//     public String generateToken(String username, Set<String> roles) {
+//         Map<String, Object> claims = new HashMap<>();
+//         claims.put("roles", roles);
+
+//         return Jwts.builder()
+//                 .setClaims(claims)
+//                 .setSubject(username)
+//                 .setIssuedAt(new Date())
+//                 .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationInMs))
+//                 .signWith(key, SignatureAlgorithm.HS512)
+//                 .compact();
+//     }
+
+
+//     public String extractUsername(String token) {
+//         return extractClaim(token, Claims::getSubject);
+//     }
+
+//     public List<String> extractRoles(String token) {
+//         Claims claims = extractAllClaims(token);
+//         return claims.get("roles", List.class);
+//     }
+
+//     public boolean validateToken(String token, String username) {
+//         return username.equals(extractUsername(token)) && !isTokenExpired(token);
+//     }
+
+//     private boolean isTokenExpired(String token) {
+//         final Date expiration = extractClaim(token, Claims::getExpiration);
+//         return expiration.before(new Date());
+//     }
+
+//     private <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+//         final Claims claims = extractAllClaims(token);
+//         return claimsResolver.apply(claims);
+//     }
+
+//     private Claims extractAllClaims(String token) {
+//         return Jwts.parserBuilder()
+//                 .setSigningKey(key)
+//                 .build()
+//                 .parseClaimsJws(token)
+//                 .getBody();
+//     }
+// }
+// package com.kathirvel.HME.Config;
+
+// import com.kathirvel.HME.Model.User;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.authentication.AuthenticationManager;
+// import org.springframework.security.authentication.AuthenticationProvider;
+// import org.springframework.security.authentication.DisabledException;
+// import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+// import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+// import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.core.userdetails.UserDetailsService;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+// import org.springframework.web.cors.CorsConfiguration;
+// import org.springframework.web.cors.CorsConfigurationSource;
+// import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+// import java.util.List;
+
+// @Configuration
+// @EnableMethodSecurity(prePostEnabled = true)
+// public class SecurityConfig {
+
+//     @Autowired
+//     private JwtAuthenticationFilter jwtauthenticationFilter;
+
+//     @Autowired
+//     private UserDetailsService userDetailsService;
+
+
+//     @Bean
+//     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+//         http
+//                 .csrf(csrf -> csrf.disable())
+//                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+//                 .authorizeHttpRequests(auth -> auth
+//                         .requestMatchers("/api/login","/api/register")
+//                         .permitAll()
+//                         .anyRequest().authenticated()
+//                 )
+//                 .sessionManagement(session -> session
+//                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//                 )
+//                 .addFilterBefore(jwtauthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     CorsConfigurationSource corsConfigurationSource() {
+//         CorsConfiguration configuration = new CorsConfiguration();
+//         configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+//         configuration.setAllowedMethods(List.of("*"));
+//         configuration.setAllowedHeaders(List.of("*"));
+//         configuration.setAllowCredentials(true);
+
+//         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+//         source.registerCorsConfiguration("/**", configuration);
+//         return source;
+//     }
+//     @Bean
+//     public AuthenticationProvider authenticationProvider() {
+//         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+//         provider.setUserDetailsService(userDetailsService);
+//         provider.setPasswordEncoder(passwordEncoder());
+//         provider.setPreAuthenticationChecks(userDetails -> {
+//             CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
+//             User user = customUserDetails.getUser();
+//             if (user.getApproved() == null || !user.getApproved()) {
+//                 throw new DisabledException("User account is not approved");
+//             }
+//         });
+//         return provider;
+//     }
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder(12);
+//     }
+
+//     @Bean
+//     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+//         return config.getAuthenticationManager();
+//     }
+// }
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Model.Appointment;
+// import com.kathirvel.HME.Service.AppointmentService;
+// import com.kathirvel.HME.dto.AppointmentDto;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+// @CrossOrigin("*")
+// @RestController
+// @RequestMapping("/Aapi")
+// public class AppointmentController {
+
+//     @Autowired
+//     private AppointmentService appointmentService;
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PostMapping("/appointments")
+//     public Appointment addAppointment(@RequestBody AppointmentDto dto) {
+//         return appointmentService.addAppointment(dto);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/appointments")
+//     public List<AppointmentDto> getAppointments() {
+//         return appointmentService.getAppointments();
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/{id}")
+//     public AppointmentDto getAppointmentById(@PathVariable int id) {
+//         Appointment appointment = appointmentService.getAppointmentsById(id);
+//         return new AppointmentDto(appointment); // ✅ returns proper DTO
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PutMapping("/{id}")
+//     public Appointment updateAppointment(@PathVariable int id, @RequestBody AppointmentDto dto) {
+//         return appointmentService.updateAppointment(id, dto);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+//     @DeleteMapping("/{id}")
+//     public ResponseEntity<String> deleteAppointmentById(@PathVariable int id) {
+//         appointmentService.deleteAppointmentById(id);
+//         return ResponseEntity.ok("Appointment deleted successfully");
+//     }
+// }
+
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Config.CustomUserDetails;
+// import com.kathirvel.HME.Config.JwtUtil;
+// import com.kathirvel.HME.Model.Roles;
+// import com.kathirvel.HME.Model.User;
+// import com.kathirvel.HME.Repositary.UserRepository;
+// import com.kathirvel.HME.dto.AuthDto;
+// import com.kathirvel.HME.dto.UserDto;
+// import org.springframework.http.HttpStatus;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.security.authentication.AuthenticationManager;
+// import org.springframework.security.authentication.BadCredentialsException;
+// import org.springframework.security.authentication.DisabledException;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.Authentication;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.time.Instant;
+// import java.time.temporal.ChronoUnit;
+// import java.util.*;
+// import java.util.stream.Collectors;
+
+// @CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
+// @RestController
+// @RequestMapping("/api")
+// public class AuthController {
+
+//     private final AuthenticationManager authenticationManager;
+//     private final JwtUtil jwtUtil;
+//     private final UserRepository userRepository;
+//     private final PasswordEncoder passwordEncoder;
+
+//     public AuthController(AuthenticationManager authenticationManager, JwtUtil jwtUtil,
+//                           UserRepository userRepository, PasswordEncoder passwordEncoder) {
+//         this.authenticationManager = authenticationManager;
+//         this.jwtUtil = jwtUtil;
+//         this.userRepository = userRepository;
+//         this.passwordEncoder = passwordEncoder;
+//     }
+
+//     @PostMapping("/login")
+//     public ResponseEntity<?> login(@RequestBody AuthDto.LoginRequest request) {
+//         System.out.println("Login attempt for user: " + request.getUsername());
+//         try {
+//             authenticationManager.authenticate(
+//                     new UsernamePasswordAuthenticationToken(
+//                             request.getUsername(),
+//                             request.getPassword()
+//                     )
+//             );
+
+//             User user = userRepository.findByUsername(request.getUsername())
+//                     .orElseThrow(() -> new RuntimeException("User not found"));
+
+//             if (user.getApproved() == null || !user.getApproved()) {
+//                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                         .body(Collections.singletonMap("message", "Account not approved"));
+//             }
+
+//             Set<String> roleNames = user.getRoles().stream()
+//                     .map(Enum::name)
+//                     .collect(Collectors.toSet());
+
+//             String token = jwtUtil.generateToken(user.getUsername(), roleNames);
+
+//             System.out.println("Login successful for user: " + request.getUsername());
+
+//             return ResponseEntity.ok(new LoginResponse(token, roleNames));
+
+//         } catch (BadCredentialsException e) {
+//             System.out.println("Bad credentials for user: " + request.getUsername());
+//             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+//                     .body(Collections.singletonMap("message", "Invalid credentials"));
+//         } catch (DisabledException e) {
+//             System.out.println("Disabled user: " + request.getUsername());
+//             return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                     .body(Collections.singletonMap("message", "Account disabled"));
+//         } catch (Exception e) {
+//             e.printStackTrace();
+//             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                     .body(Collections.singletonMap("message", "Login failed: " + e.getMessage()));
+//         }
+//     }
+
+
+//     public static class LoginResponse {
+//         private String token;
+//         private Set<String> roles;
+
+//         public LoginResponse(String token, Set<String> roles) {
+//             this.token = token;
+//             this.roles = roles;
+//         }
+
+//         public String getToken() {
+//             return token;
+//         }
+
+//         public Set<String> getRoles() {
+//             return roles;
+//         }
+//     }
+
+//     private UserDto convertToDto(User user) {
+//         return new UserDto(
+//                 user.getId(),
+//                 user.getUsername() != null ? user.getUsername() : "",
+//                 user.getEmail() != null ? user.getEmail() : "",
+//                 user.getRoles() != null ? user.getRoles() : Collections.emptySet(),
+//                 user.isApproved()
+//         );
+//     }
+
+//     @PostMapping("/register")
+//     public ResponseEntity<?> register(@RequestBody AuthDto.RegisterRequest request) {
+//         try {
+//             if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+//                 return ResponseEntity.badRequest().body("Username already exists");
+//             }
+
+//             if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+//                 return ResponseEntity.badRequest().body("Email already registered");
+//             }
+
+//             User user = new User();
+//             user.setUsername(request.getUsername());
+//             user.setEmail(request.getEmail());
+//             user.setPassword(passwordEncoder.encode(request.getPassword()));
+
+//             // Use the role from request, validate it carefully
+//             try {
+//                 Roles role = Roles.valueOf(request.getRole().toUpperCase());
+//                 user.setRoles(Set.of(role));
+//             } catch (Exception e) {
+//                 // If role not valid or missing, fallback to default (e.g. DOCTOR)
+//                 user.setRoles(Set.of(Roles.DOCTOR));
+//             }
+
+//             user.setApproved(false); // Needs approval
+//             user.setVerificationToken(UUID.randomUUID().toString());
+
+//             userRepository.save(user);
+
+//             return ResponseEntity.ok("Registration successful. Waiting for admin approval.");
+//         } catch (Exception e) {
+//             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                     .body("Registration failed: " + e.getMessage());
+//         }
+//     }
+
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @GetMapping("/users/pending")
+//     public List<UserDto> getPendingUsers() {
+//         return userRepository.findByApprovedFalse().stream()
+//                 .map(user -> new UserDto(
+//                         user.getId(),
+//                         user.getUsername(),
+//                         user.getEmail(),
+//                         user.getRoles(),
+//                         user.isApproved()))
+//                 .collect(Collectors.toList());
+//     }
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @PatchMapping("/users/{id}/approve")
+//     public ResponseEntity<?> approveUser(
+//             @PathVariable int id,
+//             @RequestBody(required = false) Map<String, Object> payload) {
+
+//         User user = userRepository.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         user.setApproved(true);
+
+//         // ✅ Optional: update role if provided
+//         if (payload != null && payload.containsKey("role")) {
+//             try {
+//                 String roleString = payload.get("role").toString();
+//                 Roles newRole = Roles.valueOf(roleString.toUpperCase());
+//                 user.setRoles(Set.of(newRole));
+//             } catch (IllegalArgumentException e) {
+//                 return ResponseEntity.badRequest().body("Invalid role specified");
+//             }
+//         }
+
+//         userRepository.save(user);
+//         return ResponseEntity.ok("User approved successfully");
+//     }
+
+
+//     @GetMapping("/users")
+//     public List<UserDto> getUsers(@RequestParam(required = false) Boolean approved) {
+//         if (approved != null) {
+//             return userRepository.findByApproved(approved).stream()
+//                     .map(this::convertToDto)
+//                     .collect(Collectors.toList());
+//         }
+//         return userRepository.findAll().stream()
+//                 .map(this::convertToDto)
+//                 .collect(Collectors.toList());
+//     }
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @PutMapping("/users/{id}/role")
+//     public ResponseEntity<?> update(@PathVariable int id, @RequestBody AuthDto.UpdatedRequest request) {
+//         User user = userRepository.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         System.out.println("Changing role to: " + request.getRole());
+
+//         Set<Roles> newRoles = new HashSet<>();
+//         newRoles.add(Roles.valueOf(request.getRole()));
+//         user.setRoles(newRoles);
+
+//         userRepository.save(user);
+
+//         return ResponseEntity.ok("User updated successfully");
+//     }
+
+//     @PostMapping("/forgot-password")
+//     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
+//         String email = request.get("email");
+//         User user = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("Email not found"));
+
+//         String token = UUID.randomUUID().toString();
+//         user.setResetToken(token);
+//         user.setTokenExpiry(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)));
+//         userRepository.save(user);
+
+//         // Send email with reset link (implement this)
+//         // emailService.sendPasswordResetEmail(user.getEmail(), token);
+
+//         return ResponseEntity.ok("Password reset link sent to your email");
+//     }
+
+//     @GetMapping("/validate-reset-token/{token}")
+//     public ResponseEntity<?> validateResetToken(@PathVariable String token) {
+//         User user = userRepository.findByResetToken(token)
+//                 .orElseThrow(() -> new RuntimeException("Invalid token"));
+
+//         if (user.getTokenExpiry().before(new Date())) {
+//             throw new RuntimeException("Token expired");
+//         }
+
+//         return ResponseEntity.ok("Token is valid");
+//     }
+
+//     @PostMapping("/reset-password")
+//     public ResponseEntity<?> resetPassword(@RequestParam String token,
+//                                            @RequestParam String newPassword) {
+//         User user = userRepository.findByResetToken(token)
+//                 .orElseThrow(() -> new RuntimeException("Invalid token"));
+
+//         if (user.getTokenExpiry().before(new Date())) {
+//             throw new RuntimeException("Token expired");
+//         }
+
+//         user.setPassword(passwordEncoder.encode(newPassword));
+//         user.setResetToken(null);
+//         user.setTokenExpiry(null);
+//         userRepository.save(user);
+
+//         return ResponseEntity.ok("Password reset successfully");
+//     }
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @DeleteMapping("/users/{id}")
+//     public ResponseEntity<?> deleteUser(@PathVariable int id) {
+//         try {
+//             User user = userRepository.findById(id)
+//                     .orElseThrow(() -> new RuntimeException("User not found"));
+
+//             // Prevent deleting super admin
+//             if (user.getRoles().contains(Roles.SUPER_ADMIN)) {
+//                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                         .body("Cannot delete super admin");
+//             }
+
+//             userRepository.delete(user);
+//             return ResponseEntity.ok("User deleted successfully");
+//         } catch (Exception e) {
+//             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                     .body("Failed to delete user: " + e.getMessage());
+//         }
+//     }
+
+//     @GetMapping("/users/check-approval/{username}")
+//     public ResponseEntity<?> checkUserApproval(@PathVariable String username) {
+//         User user = userRepository.findByUsername(username)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+//         return ResponseEntity.ok(Collections.singletonMap("approved", user.isApproved()));
+//     }
+
+
+//     // ======= New endpoint to get logged-in user info =======
+//     @GetMapping("/me")
+//     public ResponseEntity<?> getCurrentUser() {
+//         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+//         if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails) {
+//             CustomUserDetails customUserDetails = (CustomUserDetails) authentication.getPrincipal();
+//             User loggedInUser = customUserDetails.getUser();
+
+//             UserDto dto = convertToDto(loggedInUser);
+//             return ResponseEntity.ok(dto);
+//         }
+//         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
+//     }
+// }
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Model.Doctor;
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Service.DoctorService;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+
+// import static org.springframework.data.jpa.domain.AbstractPersistable_.id;
+// @CrossOrigin("*")
+// @RestController
+// @RequestMapping("/Dapi")
+// public class DoctorController {
+//     @Autowired
+//     DoctorService dService;
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PostMapping("/doctor")
+//     public Doctor addDoctor(@RequestBody Doctor doctor) {
+//         return dService.addDoctor(doctor);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/doctor")
+//     public List<Doctor> getAllDoctors() {
+//         return dService.getDoctor();
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/{id}")
+//     public ResponseEntity<Doctor> getDoctorById(@PathVariable int id) {
+//        Doctor doctor = dService.getDoctoryById(id);
+//        return ResponseEntity.ok().body(doctor);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @PutMapping("/{id}")
+//     public Doctor updateDoctorById(@PathVariable int id, @RequestBody Doctor doctor) {
+//         return dService.updateDoctorById(id,doctor);
+//     }
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @DeleteMapping("/{id}")
+//     public ResponseEntity<String> deleteDoctorById(@PathVariable int id) {
+//         dService.deleteDoctorById(id);
+//         return ResponseEntity.ok("Doctor deleted successfully");
+//     }
+
+// }
+
+
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Service.PatientService;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.HttpStatus;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+// @RestController
+// @RequestMapping("/Papi")
+// public class PatientController {
+
+//     @Autowired
+//     PatientService pService;
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+//     @PostMapping("/patient")
+//     public Patient addPatient(@RequestBody Patient patient) {
+//         return pService.addPatient(patient);
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/patient")
+//     public List<Patient> getAllPatients() {
+//         return pService.getPatient();
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/{id}")
+//     public ResponseEntity<Patient> getPatientById(@PathVariable int id) {
+//         Patient patient1 = pService.getPatientId(id);
+//         return ResponseEntity.ok().body(patient1);
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PutMapping("/{id}")
+//     public Patient updatePatient(@PathVariable int id, @RequestBody Patient patient) {
+//         return pService.updatePatient(id, patient);
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+//     @DeleteMapping("/{id}")
+//     public ResponseEntity<String> deletePatientById(@PathVariable int id) {
+//         pService.deletePatientById(id);
+//         return ResponseEntity.ok("Patient deleted successfully");
+//     }
+// }
+// package com.kathirvel.HME.dto;
+
+// import com.fasterxml.jackson.annotation.JsonFormat;
+// import com.kathirvel.HME.Model.Appointment;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.time.LocalDateTime;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// public class AppointmentDto {
+//     private int id;
+
+//     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
+//     private LocalDateTime appointmentTime;
+
+//     private int doctorId;
+//     private String doctorName;
+
+//     private int patientId;
+//     private String patientFirstName;
+//     private String patientLastName;
+
+//     public AppointmentDto(Appointment appointment) {
+//         this.id = appointment.getId();
+//         this.appointmentTime = appointment.getAppointmentTime();
+
+//         if (appointment.getDoctor() != null) {
+//             this.doctorId = appointment.getDoctor().getId();
+//             this.doctorName = appointment.getDoctor().getName();
+//         }
+
+//         if (appointment.getPatient() != null) {
+//             this.patientId = appointment.getPatient().getId();
+//             this.patientFirstName = appointment.getPatient().getFirstName();
+//             this.patientLastName = appointment.getPatient().getLastName();
+//         }
+//     }
+// }
+// package com.kathirvel.HME.dto;
+
+// public class AuthDto {
+
+//     public static class RegisterRequest {
+//         private String username;
+//         private String email;
+//         private String password;
+//         private String confirmPassword;
+//         private String role;
+
+//         // Getters and Setters
+//         public String getUsername() { return username; }
+//         public void setUsername(String username) { this.username = username; }
+
+//         public String getEmail() { return email; }
+//         public void setEmail(String email) { this.email = email; }
+
+//         public String getPassword() { return password; }
+//         public void setPassword(String password) { this.password = password; }
+
+//         public String getConfirmPassword() { return confirmPassword; }
+//         public void setConfirmPassword(String confirmPassword) {
+//             this.confirmPassword = confirmPassword;
+//         }
+//         public String getRole() { return role; }
+//         public void setRole(String role) { this.role = role; }
+//     }
+
+//     public static class LoginRequest {
+//         private String username;
+//         private String password;
+
+//         // Getters and Setters
+//         public String getUsername() { return username; }
+//         public void setUsername(String username) {
+//             this.username = username;
+//         }
+
+//         public String getPassword() { return password; }
+//         public void setPassword(String password) { this.password = password; }
+
+//     }
+
+//     public static class UpdatedRequest {
+//         private String role;
+//         private Boolean approved;
+
+//         // Getters and Setters
+//         public String getRole() { return role; }
+//         public void setRole(String role) { this.role = role; }
+
+//         public Boolean getApproved() { return approved; }
+//         public void setApproved(Boolean approved) { this.approved = approved; }
+//     }
+
+//     public static class ForgotPasswordRequest {
+//         private String email;
+
+//         // Getters and Setters
+//         public String getEmail() { return email; }
+//         public void setEmail(String email) { this.email = email; }
+//     }
+
+//     public static class ResetPasswordRequest {
+//         private String token;
+//         private String newPassword;
+//         private String confirmPassword;
+
+//         // Getters and Setters
+//         public String getToken() { return token; }
+//         public void setToken(String token) { this.token = token; }
+
+//         public String getNewPassword() { return newPassword; }
+//         public void setNewPassword(String newPassword) {
+//             this.newPassword = newPassword;
+//         }
+
+//         public String getConfirmPassword() { return confirmPassword; }
+//         public void setConfirmPassword(String confirmPassword) {
+//             this.confirmPassword = confirmPassword;
+//         }
+//     }
+
+//     public static class VerifyEmailRequest {
+//         private String token;
+
+//         // Getters and Setters
+//         public String getToken() { return token; }
+//         public void setToken(String token) { this.token = token; }
+//     }
+// }package com.kathirvel.HME.dto;
+
+// import com.kathirvel.HME.Model.Roles;
+// import java.util.Set;
+// import java.util.stream.Collectors;
+
+// public class UserDto {
+//     private int id;
+//     private String username;
+//     private String email;
+//     private Set<String> roles;
+//     private boolean approved;
+
+//     // Constructor with all fields
+//     public UserDto(int id, String username, String email, Set<Roles> roles, boolean approved) {
+//         this.id = id;
+//         this.username = username;
+//         this.email = email;
+//         this.roles = roles.stream()
+//                 .map(Enum::name)
+//                 .collect(Collectors.toSet());
+//         this.approved = approved;
+//     }
+
+//     // Getters
+//     public int getId() { return id; }
+//     public String getUsername() { return username; }
+//     public String getEmail() { return email; }
+//     public Set<String> getRoles() { return roles; }
+//     public boolean isApproved() { return approved; }
+// }package com.kathirvel.HME.Model;
+
+// import com.fasterxml.jackson.annotation.JsonBackReference;
+// import com.fasterxml.jackson.annotation.JsonFormat;
+// import com.fasterxml.jackson.annotation.JsonIgnore;
+// import jakarta.persistence.*;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.time.LocalDateTime;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name = "appointmentdetails")
+// public class Appointment {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     @Column(name = "appointment_id")
+//     private int id;
+//     @Column(name = "appointment_time")
+//     @JsonFormat(pattern = "yyyy-MM-dd'T:'HH:mm")
+//     private LocalDateTime appointmentTime;
+
+
+//     @ManyToOne
+//     @JoinColumn(name = "doctor_id")
+//     @JsonBackReference(value = "doctor-appointments")
+//     private Doctor doctor;
+
+//     @ManyToOne
+//     @JoinColumn(name = "patient_id")
+//     @JsonBackReference(value = "patient-appointments")
+//     private Patient patient;
+// }
+// package com.kathirvel.HME.Model;
+
+// import com.fasterxml.jackson.annotation.JsonBackReference;
+// import com.fasterxml.jackson.annotation.JsonFormat;
+// import com.fasterxml.jackson.annotation.JsonIgnore;
+// import jakarta.persistence.*;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.time.LocalDateTime;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name = "appointmentdetails")
+// public class Appointment {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     @Column(name = "appointment_id")
+//     private int id;
+//     @Column(name = "appointment_time")
+//     @JsonFormat(pattern = "yyyy-MM-dd'T:'HH:mm")
+//     private LocalDateTime appointmentTime;
+
+
+//     @ManyToOne
+//     @JoinColumn(name = "doctor_id")
+//     @JsonBackReference(value = "doctor-appointments")
+//     private Doctor doctor;
+
+//     @ManyToOne
+//     @JoinColumn(name = "patient_id")
+//     @JsonBackReference(value = "patient-appointments")
+//     private Patient patient;
+// }
+// package com.kathirvel.HME.Model;
+
+// import com.fasterxml.jackson.annotation.JsonIgnore;
+// import com.fasterxml.jackson.annotation.JsonManagedReference;
+// import jakarta.persistence.*;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.util.List;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name ="patientdetails")
+// public class Patient {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     @Column(name = "patient_id")
+//     private int id;
+//     @Column(name = "patient_firstName")
+//     private String firstName;
+//     @Column(name = "patient_lastName")
+//     private String lastName;
+//     @Column(name = "patient_phone")
+//     private Long phone;
+//     @Column(name = "patient_address")
+//     private String address;
+//     @Column(name = "patient_gender")
+//     private String gender;
+
+//     @OneToMany(mappedBy = "patient", cascade = CascadeType.ALL, orphanRemoval = true)
+//     @JsonManagedReference(value = "patient-appointments")
+//     private List<Appointment> appointments;
+
+// }
+// package com.kathirvel.HME.Model;
+
+// public enum Roles {
+//     SUPER_ADMIN,
+//     ADMIN,
+//     DOCTOR
+// }
+// package com.kathirvel.HME.Model;
+
+// import jakarta.persistence.*;
+// import jakarta.validation.constraints.Email;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.util.Date;
+// import java.util.Set;
+// import java.util.UUID;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name = "users")
+// public class User {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     private Integer id;
+
+//     @Column(unique = true)
+//     private String username;
+
+//     @Column(unique = true)
+//     @Email(message = "Email should be valid")
+//     private String email;
+
+//     private String password;
+
+//     @Column(name = "approved", nullable = false,columnDefinition = "boolean default false")
+//     private Boolean approved = false;
+
+//     @Column(name = "verification_token")
+//     private String verificationToken;
+
+//     @Column(name = "reset_token")
+//     private String resetToken;
+
+//     @Column(name = "token_expiry")
+//     private Date tokenExpiry;
+
+//     @ElementCollection(targetClass = Roles.class, fetch = FetchType.EAGER)
+//     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
+//     @Enumerated(EnumType.STRING)
+//     @Column(name = "role")
+//     private Set<Roles> roles;
+//     public Boolean isApproved() {
+//         return this.approved;
+//     }
+
+// }package com.kathirvel.HME.Repositary;
+
+// import com.kathirvel.HME.Model.User;
+// import org.springframework.data.jpa.repository.JpaRepository;
+
+// import java.util.Date;
+// import java.util.List;
+// import java.util.Optional;
+
+// public interface UserRepository extends JpaRepository<User, Integer> {
+
+//    Optional<User> findByUsername(String username);
+
+//    Optional<User> findByEmail(String email);
+
+//    Optional<User> findByResetToken(String resetToken);
+
+//    List<User> findByApprovedFalse();
+
+// //   List<User> findByTokenExpiryBefore(Date now);
+
+//    // For checking existing username or email during registration
+// //   boolean existsByUsername(String username);
+// //   boolean existsByEmail(String email);
+
+//    // For admin approval dashboard
+//    List<User> findByApproved(boolean approved);
+
+//    // For verification token check
+// //   Optional<User> findByVerificationToken(String token);
+// }package com.kathirvel.HME.Service;
+
+// import com.kathirvel.HME.Model.Appointment;
+// import com.kathirvel.HME.Model.Doctor;
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Repositary.AppointmentRepo;
+// import com.kathirvel.HME.Repositary.DoctorRepo;
+// import com.kathirvel.HME.Repositary.PatientRepo;
+// import com.kathirvel.HME.dto.AppointmentDto;
+// import jakarta.transaction.Transactional;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.stereotype.Service;
+// import org.springframework.web.bind.annotation.PostMapping;
+// import org.springframework.web.bind.annotation.RequestBody;
+
+// import java.util.List;
+// import java.util.stream.Collectors;
+
+// @Service
+// public class AppointmentService {
+//     @Autowired
+//     private AppointmentRepo aRepo;
+
+//     @Autowired
+//     private DoctorRepo dRepo;
+
+//     @Autowired
+//     private PatientRepo pRepo;
+
+//     public List<AppointmentDto> getAppointments() {
+//         return aRepo.findAll().stream()
+//                 .map(AppointmentDto::new)
+//                 .collect(Collectors.toList());
+//     }
+
+//     public Appointment addAppointment(AppointmentDto dto) {
+//         Appointment appointment = new Appointment();
+//         appointment.setAppointmentTime(dto.getAppointmentTime());
+
+//         Doctor doctor = dRepo.findById(dto.getDoctorId())
+//                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
+//         Patient patient = pRepo.findById(dto.getPatientId())
+//                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+//         appointment.setDoctor(doctor);
+//         appointment.setPatient(patient);
+
+//         return aRepo.save(appointment);
+//     }
+
+//     public Appointment getAppointmentsById(int id) {
+//         return aRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
+//     }
+
+//     public Appointment updateAppointment(int id, AppointmentDto dto) {
+//         Appointment existing = aRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+//         existing.setAppointmentTime(dto.getAppointmentTime());
+
+//         Doctor doctor = dRepo.findById(dto.getDoctorId())
+//                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
+//         Patient patient = pRepo.findById(dto.getPatientId())
+//                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+//         existing.setDoctor(doctor);
+//         existing.setPatient(patient);
+
+//         return aRepo.save(existing);
+//     }
+
+//     @Transactional
+//     public void deleteAppointmentById(int id) {
+//         Appointment appointment = aRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
+//         aRepo.delete(appointment);
+//     }
+// }
+
+// package com.kathirvel.HME.Service;
+
+// import com.kathirvel.HME.Model.Doctor;
+// import com.kathirvel.HME.Repositary.DoctorRepo;
+// import jakarta.transaction.Transactional;
+// import org.hibernate.StaleObjectStateException;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.orm.ObjectOptimisticLockingFailureException;
+// import org.springframework.stereotype.Service;
+
+// import java.util.List;
+
+// @Service
+// public class DoctorService {
+//     @Autowired
+//     private DoctorRepo dRepo;
+
+
+//     public Doctor addDoctor(Doctor doctor) {
+//         return dRepo.save(doctor);
+//     }
+
+//     public List<Doctor> getDoctor() {
+//         return dRepo.findAll();
+//     }
+
+//     public Doctor getDoctoryById(int id) {
+//         return dRepo.findById(id).orElseThrow(() -> new RuntimeException("Doctor not found"));
+//     }
+//     public Doctor updateDoctorById(int id,Doctor doctor) {
+//         Doctor updateDoctor = dRepo.findById(id).orElseThrow(() -> new RuntimeException("Doctor not found"));
+//         updateDoctor.setName(doctor.getName());
+//         updateDoctor.setPhone(doctor.getPhone());
+//         updateDoctor.setGender(doctor.getGender());
+//         updateDoctor.setAvailable(doctor.getAvailable());
+//         return dRepo.save(updateDoctor);
+//     }
+
+//     @Transactional
+//     public void deleteDoctorById(int id) {
+//         Doctor doctor = dRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
+
+//         dRepo.delete(doctor);
+//     }
+
+
+// }
+// package com.kathirvel.HME.Service;
+
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Repositary.PatientRepo;
+// import jakarta.transaction.Transactional;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.stereotype.Service;
+
+// import java.util.List;
+
+// @Service
+// public class PatientService {
+//     @Autowired
+//     private PatientRepo pRepo;
+
+//     public Patient addPatient(Patient patient) {
+//         return pRepo.save(patient);
+//     }
+
+//     public List<Patient> getPatient() {
+//         return pRepo.findAll();
+//     }
+
+//     public Patient getPatientId(int id) {
+//         return pRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
+//     }
+
+//     public Patient updatePatient(int id, Patient updatePatient) {
+//         Patient patient = pRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
+//         patient.setFirstName(updatePatient.getFirstName());
+//         patient.setLastName(updatePatient.getLastName());
+//         patient.setPhone(updatePatient.getPhone());
+//         patient.setAddress(updatePatient.getAddress());
+//         patient.setGender(updatePatient.getGender());
+//         return pRepo.save(patient);
+//     }
+//     @Transactional
+//     public Patient deletePatientById(int id) {
+//          Patient patient= pRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
+//          pRepo.deleteById(id);
+//          return patient;
+//     }
+// }
+// package com.kathirvel.HME;
+
+// import com.kathirvel.HME.Model.Roles;
+// import com.kathirvel.HME.Model.User;
+// import com.kathirvel.HME.Repositary.UserRepository;
+// import jakarta.annotation.PostConstruct;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.stereotype.Component;
+
+// import java.util.Set;
+
+// @Component
+// public class DataInitializer {
+//     @Autowired
+//     private UserRepository userRepository;
+//     @Autowired
+//     private PasswordEncoder passwordEncoder;
+
+//     @PostConstruct
+//     public void createAdminUser() {
+//         userRepository.findByUsername("super_admin").ifPresentOrElse(
+//                 user -> {},  // Admin already exists
+//                 () -> {
+//                     User admin = new User();
+//                     admin.setUsername("super_admin");
+//                     admin.setPassword(passwordEncoder.encode("superadmin123"));
+//                     admin.setRoles(Set.of(Roles.SUPER_ADMIN));
+//                     admin.setApproved(true);  // Explicitly approve admin
+//                     userRepository.save(admin);
+//                 }
+//         );
+//     }
+// }
+// spring.application.name=HME
+// spring.datasource.url=jdbc:postgresql://localhost:5432/kathir
+// spring.datasource.username=postgres
+// spring.datasource.password=postgres
+// spring.jpa.hibernate.ddl-auto=update
+// spring.jpa.show-sql=true
+// spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+// jwt.secret=OQ1p1A9pvnFxv2B7nG0+0TtuYY6qKoOr4nxAD+dU2E3Ek9psnAmvcCjEr9tLbF1KCEYtxaNh2UQpWZtxJKDG+Q==
+// server.port=8081
+
+

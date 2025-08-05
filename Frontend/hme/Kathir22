@@ -1,0 +1,3225 @@
+// package com.kathirvel.HME.Config;
+
+// import com.kathirvel.HME.Model.User;
+// import com.kathirvel.HME.Repositary.UserRepository;
+// import lombok.AllArgsConstructor;
+// import org.springframework.security.core.userdetails.UserDetails;
+// import org.springframework.security.core.userdetails.UserDetailsService;
+// import org.springframework.security.core.userdetails.UsernameNotFoundException;
+// import org.springframework.stereotype.Service;
+// @Service
+// @AllArgsConstructor
+// public class CustomerUserDetailsService implements UserDetailsService {
+
+//     private final UserRepository userRepository;
+
+//     @Override
+//     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+//         User appUser = userRepository.findByUsername(username)
+//                 .orElseThrow(() -> new UsernameNotFoundException("User Not Found"));
+
+//         return new CustomUserDetails(appUser);
+//     }
+// }
+// package com.kathirvel.HME.Config;
+
+// import com.kathirvel.HME.Model.User;
+// import org.springframework.security.core.GrantedAuthority;
+// import org.springframework.security.core.authority.SimpleGrantedAuthority;
+// import org.springframework.security.core.userdetails.UserDetails;
+
+// import java.util.Collection;
+// import java.util.stream.Collectors;
+
+// public class CustomUserDetails implements UserDetails {
+
+//     private final User user;
+
+//     public CustomUserDetails(User user) {
+//         this.user = user;
+//     }
+
+//     public User getUser() {
+//         return user;
+//     }
+
+//     @Override
+//     public Collection<? extends GrantedAuthority> getAuthorities() {
+//         return user.getRoles().stream()
+//                 .map(role -> new SimpleGrantedAuthority(role.name()))
+//                 .collect(Collectors.toList());
+//     }
+
+//     @Override
+//     public String getPassword() {
+//         return user.getPassword();
+//     }
+
+//     @Override
+//     public String getUsername() {
+//         return user.getUsername();
+//     }
+
+//     @Override
+//     public boolean isAccountNonExpired() {
+//         return true;
+//     }
+
+//     @Override
+//     public boolean isAccountNonLocked() {
+//         return true;
+//     }
+
+//     @Override
+//     public boolean isCredentialsNonExpired() {
+//         return true;
+//     }
+
+//     @Override
+//     public boolean isEnabled() {
+//         return true;
+//     }
+// }
+// package com.kathirvel.HME.Config;
+
+// import jakarta.servlet.FilterChain;
+// import jakarta.servlet.ServletException;
+// import jakarta.servlet.http.HttpServletRequest;
+// import jakarta.servlet.http.HttpServletResponse;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.authority.SimpleGrantedAuthority;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.stereotype.Component;
+// import org.springframework.web.filter.OncePerRequestFilter;
+
+// import java.io.IOException;
+// import java.util.ArrayList;
+// import java.util.List;
+// import java.util.stream.Collectors;
+// @Component
+// public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+//     @Autowired
+//     private JwtUtil jwtutil;
+
+//     @Override
+//     protected void doFilterInternal(HttpServletRequest request,
+//                                     HttpServletResponse response,
+//                                     FilterChain filterChain)
+//             throws ServletException, IOException {
+
+//         String authHeader = request.getHeader("Authorization");
+//         String jwtToken = null;
+//         String username = null;
+
+//         if (authHeader != null && authHeader.startsWith("Bearer ")) {
+//             jwtToken = authHeader.substring(7);
+//             try {
+//                 username = jwtutil.extractUsername(jwtToken);
+//             } catch (Exception e) {
+//                 System.out.println("Invalid JWT token: " + e.getMessage());
+//             }
+//         }
+
+//         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+//             if (jwtutil.validateToken(jwtToken, username)) {
+//                 List<String> roles = jwtutil.extractRoles(jwtToken);
+//                 List<SimpleGrantedAuthority> authorities = roles.stream()
+//                         .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+//                         .collect(Collectors.toList());
+
+//                 UsernamePasswordAuthenticationToken authToken =
+//                         new UsernamePasswordAuthenticationToken(username, null, authorities);
+//                 SecurityContextHolder.getContext().setAuthentication(authToken);
+//             }
+//         }
+//         filterChain.doFilter(request, response);
+//     }
+// }
+
+// package com.kathirvel.HME.Config;
+
+// import io.jsonwebtoken.*;
+// import io.jsonwebtoken.security.Keys;
+// import jakarta.annotation.PostConstruct;
+
+// import org.springframework.beans.factory.annotation.Value;
+// import org.springframework.stereotype.Component;
+
+// import javax.crypto.SecretKey;
+// import java.nio.charset.StandardCharsets;
+// import java.util.*;
+// import java.util.function.Function;
+
+// @Component
+// public class JwtUtil {
+
+//     @Value("${jwt.secret}")
+//     private String secret;
+
+//     private SecretKey key;
+
+//     private final long jwtExpirationInMs = 36000000;
+
+//     @PostConstruct
+//     public void init() {
+//         byte[] decodedKey = Base64.getDecoder().decode(secret);
+//         this.key = Keys.hmacShaKeyFor(decodedKey);
+//     }
+
+//     public String generateToken(String username, Set<String> roles) {
+//         Map<String, Object> claims = new HashMap<>();
+//         claims.put("roles", roles);
+
+//         return Jwts.builder()
+//                 .setClaims(claims)
+//                 .setSubject(username)
+//                 .setIssuedAt(new Date())
+//                 .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationInMs))
+//                 .signWith(key, SignatureAlgorithm.HS512)
+//                 .compact();
+//     }
+
+
+//     public String extractUsername(String token) {
+//         return extractClaim(token, Claims::getSubject);
+//     }
+
+//     public List<String> extractRoles(String token) {
+//         Claims claims = extractAllClaims(token);
+//         return claims.get("roles", List.class);
+//     }
+
+//     public boolean validateToken(String token, String username) {
+//         return username.equals(extractUsername(token)) && !isTokenExpired(token);
+//     }
+
+//     private boolean isTokenExpired(String token) {
+//         final Date expiration = extractClaim(token, Claims::getExpiration);
+//         return expiration.before(new Date());
+//     }
+
+//     private <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+//         final Claims claims = extractAllClaims(token);
+//         return claimsResolver.apply(claims);
+//     }
+
+//     private Claims extractAllClaims(String token) {
+//         return Jwts.parserBuilder()
+//                 .setSigningKey(key)
+//                 .build()
+//                 .parseClaimsJws(token)
+//                 .getBody();
+//     }
+// }
+// package com.kathirvel.HME.Config;
+
+// import com.kathirvel.HME.Model.User;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.context.annotation.Bean;
+// import org.springframework.context.annotation.Configuration;
+// import org.springframework.security.authentication.AuthenticationManager;
+// import org.springframework.security.authentication.AuthenticationProvider;
+// import org.springframework.security.authentication.DisabledException;
+// import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+// import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+// import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+// import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+// import org.springframework.security.config.http.SessionCreationPolicy;
+// import org.springframework.security.core.userdetails.UserDetailsService;
+// import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.security.web.SecurityFilterChain;
+// import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+// import org.springframework.web.cors.CorsConfiguration;
+// import org.springframework.web.cors.CorsConfigurationSource;
+// import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+// import java.util.List;
+
+// @Configuration
+// @EnableMethodSecurity(prePostEnabled = true)
+// public class SecurityConfig {
+
+//     @Autowired
+//     private JwtAuthenticationFilter jwtauthenticationFilter;
+
+//     @Autowired
+//     private UserDetailsService userDetailsService;
+
+
+//     @Bean
+//     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+//         http
+//                 .csrf(csrf -> csrf.disable())
+//                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+//                 .authorizeHttpRequests(auth -> auth
+//                         .requestMatchers("/api/login","/api/register")
+//                         .permitAll()
+//                         .anyRequest().authenticated()
+//                 )
+//                 .sessionManagement(session -> session
+//                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//                 )
+//                 .addFilterBefore(jwtauthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+//         return http.build();
+//     }
+
+//     @Bean
+//     CorsConfigurationSource corsConfigurationSource() {
+//         CorsConfiguration configuration = new CorsConfiguration();
+//         configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+//         configuration.setAllowedMethods(List.of("*"));
+//         configuration.setAllowedHeaders(List.of("*"));
+//         configuration.setAllowCredentials(true);
+
+//         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+//         source.registerCorsConfiguration("/**", configuration);
+//         return source;
+//     }
+//     @Bean
+//     public AuthenticationProvider authenticationProvider() {
+//         DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+//         provider.setUserDetailsService(userDetailsService);
+//         provider.setPasswordEncoder(passwordEncoder());
+//         provider.setPreAuthenticationChecks(userDetails -> {
+//             CustomUserDetails customUserDetails = (CustomUserDetails) userDetails;
+//             User user = customUserDetails.getUser();
+//             if (user.getApproved() == null || !user.getApproved()) {
+//                 throw new DisabledException("User account is not approved");
+//             }
+//         });
+//         return provider;
+//     }
+//     @Bean
+//     public PasswordEncoder passwordEncoder() {
+//         return new BCryptPasswordEncoder(12);
+//     }
+
+//     @Bean
+//     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+//         return config.getAuthenticationManager();
+//     }
+// }
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Model.Appointment;
+// import com.kathirvel.HME.Service.AppointmentService;
+// import com.kathirvel.HME.dto.AppointmentDto;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+// @CrossOrigin("*")
+// @RestController
+// @RequestMapping("/Aapi")
+// public class AppointmentController {
+
+//     @Autowired
+//     private AppointmentService appointmentService;
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PostMapping("/appointments")
+//     public Appointment addAppointment(@RequestBody AppointmentDto dto) {
+//         return appointmentService.addAppointment(dto);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/appointments")
+//     public List<AppointmentDto> getAppointments() {
+//         return appointmentService.getAppointments();
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/{id}")
+//     public AppointmentDto getAppointmentById(@PathVariable int id) {
+//         Appointment appointment = appointmentService.getAppointmentsById(id);
+//         return new AppointmentDto(appointment); // ✅ returns proper DTO
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PutMapping("/{id}")
+//     public Appointment updateAppointment(@PathVariable int id, @RequestBody AppointmentDto dto) {
+//         return appointmentService.updateAppointment(id, dto);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+//     @DeleteMapping("/{id}")
+//     public ResponseEntity<String> deleteAppointmentById(@PathVariable int id) {
+//         appointmentService.deleteAppointmentById(id);
+//         return ResponseEntity.ok("Appointment deleted successfully");
+//     }
+// }
+
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Config.CustomUserDetails;
+// import com.kathirvel.HME.Config.JwtUtil;
+// import com.kathirvel.HME.Model.Roles;
+// import com.kathirvel.HME.Model.User;
+// import com.kathirvel.HME.Repositary.UserRepository;
+// import com.kathirvel.HME.dto.AuthDto;
+// import com.kathirvel.HME.dto.UserDto;
+// import org.springframework.http.HttpStatus;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.security.authentication.AuthenticationManager;
+// import org.springframework.security.authentication.BadCredentialsException;
+// import org.springframework.security.authentication.DisabledException;
+// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.core.Authentication;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.time.Instant;
+// import java.time.temporal.ChronoUnit;
+// import java.util.*;
+// import java.util.stream.Collectors;
+
+// @CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
+// @RestController
+// @RequestMapping("/api")
+// public class AuthController {
+
+//     private final AuthenticationManager authenticationManager;
+//     private final JwtUtil jwtUtil;
+//     private final UserRepository userRepository;
+//     private final PasswordEncoder passwordEncoder;
+
+//     public AuthController(AuthenticationManager authenticationManager, JwtUtil jwtUtil,
+//                           UserRepository userRepository, PasswordEncoder passwordEncoder) {
+//         this.authenticationManager = authenticationManager;
+//         this.jwtUtil = jwtUtil;
+//         this.userRepository = userRepository;
+//         this.passwordEncoder = passwordEncoder;
+//     }
+
+//     @PostMapping("/login")
+//     public ResponseEntity<?> login(@RequestBody AuthDto.LoginRequest request) {
+//         System.out.println("Login attempt for user: " + request.getUsername());
+//         try {
+//             authenticationManager.authenticate(
+//                     new UsernamePasswordAuthenticationToken(
+//                             request.getUsername(),
+//                             request.getPassword()
+//                     )
+//             );
+
+//             User user = userRepository.findByUsername(request.getUsername())
+//                     .orElseThrow(() -> new RuntimeException("User not found"));
+
+//             if (user.getApproved() == null || !user.getApproved()) {
+//                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                         .body(Collections.singletonMap("message", "Account not approved"));
+//             }
+
+//             Set<String> roleNames = user.getRoles().stream()
+//                     .map(Enum::name)
+//                     .collect(Collectors.toSet());
+
+//             String token = jwtUtil.generateToken(user.getUsername(), roleNames);
+
+//             System.out.println("Login successful for user: " + request.getUsername());
+
+//             return ResponseEntity.ok(new LoginResponse(token, roleNames));
+
+//         } catch (BadCredentialsException e) {
+//             System.out.println("Bad credentials for user: " + request.getUsername());
+//             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+//                     .body(Collections.singletonMap("message", "Invalid credentials"));
+//         } catch (DisabledException e) {
+//             System.out.println("Disabled user: " + request.getUsername());
+//             return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                     .body(Collections.singletonMap("message", "Account disabled"));
+//         } catch (Exception e) {
+//             e.printStackTrace();
+//             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                     .body(Collections.singletonMap("message", "Login failed: " + e.getMessage()));
+//         }
+//     }
+
+
+//     public static class LoginResponse {
+//         private String token;
+//         private Set<String> roles;
+
+//         public LoginResponse(String token, Set<String> roles) {
+//             this.token = token;
+//             this.roles = roles;
+//         }
+
+//         public String getToken() {
+//             return token;
+//         }
+
+//         public Set<String> getRoles() {
+//             return roles;
+//         }
+//     }
+
+//     private UserDto convertToDto(User user) {
+//         return new UserDto(
+//                 user.getId(),
+//                 user.getUsername() != null ? user.getUsername() : "",
+//                 user.getEmail() != null ? user.getEmail() : "",
+//                 user.getRoles() != null ? user.getRoles() : Collections.emptySet(),
+//                 user.isApproved()
+//         );
+//     }
+
+//     @PostMapping("/register")
+//     public ResponseEntity<?> register(@RequestBody AuthDto.RegisterRequest request) {
+//         try {
+//             if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+//                 return ResponseEntity.badRequest().body("Username already exists");
+//             }
+
+//             if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+//                 return ResponseEntity.badRequest().body("Email already registered");
+//             }
+
+//             User user = new User();
+//             user.setUsername(request.getUsername());
+//             user.setEmail(request.getEmail());
+//             user.setPassword(passwordEncoder.encode(request.getPassword()));
+
+//             // Use the role from request, validate it carefully
+//             try {
+//                 Roles role = Roles.valueOf(request.getRole().toUpperCase());
+//                 user.setRoles(Set.of(role));
+//             } catch (Exception e) {
+//                 // If role not valid or missing, fallback to default (e.g. DOCTOR)
+//                 user.setRoles(Set.of(Roles.DOCTOR));
+//             }
+
+//             user.setApproved(false); // Needs approval
+//             user.setVerificationToken(UUID.randomUUID().toString());
+
+//             userRepository.save(user);
+
+//             return ResponseEntity.ok("Registration successful. Waiting for admin approval.");
+//         } catch (Exception e) {
+//             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                     .body("Registration failed: " + e.getMessage());
+//         }
+//     }
+
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @GetMapping("/users/pending")
+//     public List<UserDto> getPendingUsers() {
+//         return userRepository.findByApprovedFalse().stream()
+//                 .map(user -> new UserDto(
+//                         user.getId(),
+//                         user.getUsername(),
+//                         user.getEmail(),
+//                         user.getRoles(),
+//                         user.isApproved()))
+//                 .collect(Collectors.toList());
+//     }
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @PatchMapping("/users/{id}/approve")
+//     public ResponseEntity<?> approveUser(
+//             @PathVariable int id,
+//             @RequestBody(required = false) Map<String, Object> payload) {
+
+//         User user = userRepository.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         user.setApproved(true);
+
+//         // ✅ Optional: update role if provided
+//         if (payload != null && payload.containsKey("role")) {
+//             try {
+//                 String roleString = payload.get("role").toString();
+//                 Roles newRole = Roles.valueOf(roleString.toUpperCase());
+//                 user.setRoles(Set.of(newRole));
+//             } catch (IllegalArgumentException e) {
+//                 return ResponseEntity.badRequest().body("Invalid role specified");
+//             }
+//         }
+
+//         userRepository.save(user);
+//         return ResponseEntity.ok("User approved successfully");
+//     }
+
+
+//     @GetMapping("/users")
+//     public List<UserDto> getUsers(@RequestParam(required = false) Boolean approved) {
+//         if (approved != null) {
+//             return userRepository.findByApproved(approved).stream()
+//                     .map(this::convertToDto)
+//                     .collect(Collectors.toList());
+//         }
+//         return userRepository.findAll().stream()
+//                 .map(this::convertToDto)
+//                 .collect(Collectors.toList());
+//     }
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @PutMapping("/users/{id}/role")
+//     public ResponseEntity<?> update(@PathVariable int id, @RequestBody AuthDto.UpdatedRequest request) {
+//         User user = userRepository.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+//         System.out.println("Changing role to: " + request.getRole());
+
+//         Set<Roles> newRoles = new HashSet<>();
+//         newRoles.add(Roles.valueOf(request.getRole()));
+//         user.setRoles(newRoles);
+
+//         userRepository.save(user);
+
+//         return ResponseEntity.ok("User updated successfully");
+//     }
+
+//     @PostMapping("/forgot-password")
+//     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> request) {
+//         String email = request.get("email");
+//         User user = userRepository.findByEmail(email)
+//                 .orElseThrow(() -> new RuntimeException("Email not found"));
+
+//         String token = UUID.randomUUID().toString();
+//         user.setResetToken(token);
+//         user.setTokenExpiry(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)));
+//         userRepository.save(user);
+
+//         // Send email with reset link (implement this)
+//         // emailService.sendPasswordResetEmail(user.getEmail(), token);
+
+//         return ResponseEntity.ok("Password reset link sent to your email");
+//     }
+
+//     @GetMapping("/validate-reset-token/{token}")
+//     public ResponseEntity<?> validateResetToken(@PathVariable String token) {
+//         User user = userRepository.findByResetToken(token)
+//                 .orElseThrow(() -> new RuntimeException("Invalid token"));
+
+//         if (user.getTokenExpiry().before(new Date())) {
+//             throw new RuntimeException("Token expired");
+//         }
+
+//         return ResponseEntity.ok("Token is valid");
+//     }
+
+//     @PostMapping("/reset-password")
+//     public ResponseEntity<?> resetPassword(@RequestParam String token,
+//                                            @RequestParam String newPassword) {
+//         User user = userRepository.findByResetToken(token)
+//                 .orElseThrow(() -> new RuntimeException("Invalid token"));
+
+//         if (user.getTokenExpiry().before(new Date())) {
+//             throw new RuntimeException("Token expired");
+//         }
+
+//         user.setPassword(passwordEncoder.encode(newPassword));
+//         user.setResetToken(null);
+//         user.setTokenExpiry(null);
+//         userRepository.save(user);
+
+//         return ResponseEntity.ok("Password reset successfully");
+//     }
+
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @DeleteMapping("/users/{id}")
+//     public ResponseEntity<?> deleteUser(@PathVariable int id) {
+//         try {
+//             User user = userRepository.findById(id)
+//                     .orElseThrow(() -> new RuntimeException("User not found"));
+
+//             // Prevent deleting super admin
+//             if (user.getRoles().contains(Roles.SUPER_ADMIN)) {
+//                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                         .body("Cannot delete super admin");
+//             }
+
+//             userRepository.delete(user);
+//             return ResponseEntity.ok("User deleted successfully");
+//         } catch (Exception e) {
+//             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                     .body("Failed to delete user: " + e.getMessage());
+//         }
+//     }
+
+//     @GetMapping("/users/check-approval/{username}")
+//     public ResponseEntity<?> checkUserApproval(@PathVariable String username) {
+//         User user = userRepository.findByUsername(username)
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+//         return ResponseEntity.ok(Collections.singletonMap("approved", user.isApproved()));
+//     }
+
+
+//     // ======= New endpoint to get logged-in user info =======
+//     @GetMapping("/me")
+//     public ResponseEntity<?> getCurrentUser() {
+//         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+//         if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails) {
+//             CustomUserDetails customUserDetails = (CustomUserDetails) authentication.getPrincipal();
+//             User loggedInUser = customUserDetails.getUser();
+
+//             UserDto dto = convertToDto(loggedInUser);
+//             return ResponseEntity.ok(dto);
+//         }
+//         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
+//     }
+// }
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Model.Doctor;
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Service.DoctorService;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+
+// import static org.springframework.data.jpa.domain.AbstractPersistable_.id;
+// @CrossOrigin("*")
+// @RestController
+// @RequestMapping("/Dapi")
+// public class DoctorController {
+//     @Autowired
+//     DoctorService dService;
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PostMapping("/doctor")
+//     public Doctor addDoctor(@RequestBody Doctor doctor) {
+//         return dService.addDoctor(doctor);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/doctor")
+//     public List<Doctor> getAllDoctors() {
+//         return dService.getDoctor();
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/{id}")
+//     public ResponseEntity<Doctor> getDoctorById(@PathVariable int id) {
+//        Doctor doctor = dService.getDoctoryById(id);
+//        return ResponseEntity.ok().body(doctor);
+//     }
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @PutMapping("/{id}")
+//     public Doctor updateDoctorById(@PathVariable int id, @RequestBody Doctor doctor) {
+//         return dService.updateDoctorById(id,doctor);
+//     }
+//     @PreAuthorize("hasRole('SUPER_ADMIN')")
+//     @DeleteMapping("/{id}")
+//     public ResponseEntity<String> deleteDoctorById(@PathVariable int id) {
+//         dService.deleteDoctorById(id);
+//         return ResponseEntity.ok("Doctor deleted successfully");
+//     }
+
+// }
+
+
+// package com.kathirvel.HME.Controller;
+
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Service.PatientService;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.http.HttpStatus;
+// import org.springframework.http.ResponseEntity;
+// import org.springframework.security.access.prepost.PreAuthorize;
+// import org.springframework.web.bind.annotation.*;
+
+// import java.util.List;
+// @RestController
+// @RequestMapping("/Papi")
+// public class PatientController {
+
+//     @Autowired
+//     PatientService pService;
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+//     @PostMapping("/patient")
+//     public Patient addPatient(@RequestBody Patient patient) {
+//         return pService.addPatient(patient);
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/patient")
+//     public List<Patient> getAllPatients() {
+//         return pService.getPatient();
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','DOCTOR')")
+//     @GetMapping("/{id}")
+//     public ResponseEntity<Patient> getPatientById(@PathVariable int id) {
+//         Patient patient1 = pService.getPatientId(id);
+//         return ResponseEntity.ok().body(patient1);
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+//     @PutMapping("/{id}")
+//     public Patient updatePatient(@PathVariable int id, @RequestBody Patient patient) {
+//         return pService.updatePatient(id, patient);
+//     }
+
+//     @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
+//     @DeleteMapping("/{id}")
+//     public ResponseEntity<String> deletePatientById(@PathVariable int id) {
+//         pService.deletePatientById(id);
+//         return ResponseEntity.ok("Patient deleted successfully");
+//     }
+// }
+// package com.kathirvel.HME.dto;
+
+// import com.fasterxml.jackson.annotation.JsonFormat;
+// import com.kathirvel.HME.Model.Appointment;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.time.LocalDateTime;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// public class AppointmentDto {
+//     private int id;
+
+//     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm")
+//     private LocalDateTime appointmentTime;
+
+//     private int doctorId;
+//     private String doctorName;
+
+//     private int patientId;
+//     private String patientFirstName;
+//     private String patientLastName;
+
+//     public AppointmentDto(Appointment appointment) {
+//         this.id = appointment.getId();
+//         this.appointmentTime = appointment.getAppointmentTime();
+
+//         if (appointment.getDoctor() != null) {
+//             this.doctorId = appointment.getDoctor().getId();
+//             this.doctorName = appointment.getDoctor().getName();
+//         }
+
+//         if (appointment.getPatient() != null) {
+//             this.patientId = appointment.getPatient().getId();
+//             this.patientFirstName = appointment.getPatient().getFirstName();
+//             this.patientLastName = appointment.getPatient().getLastName();
+//         }
+//     }
+// }
+// package com.kathirvel.HME.dto;
+
+// public class AuthDto {
+
+//     public static class RegisterRequest {
+//         private String username;
+//         private String email;
+//         private String password;
+//         private String confirmPassword;
+//         private String role;
+
+//         // Getters and Setters
+//         public String getUsername() { return username; }
+//         public void setUsername(String username) { this.username = username; }
+
+//         public String getEmail() { return email; }
+//         public void setEmail(String email) { this.email = email; }
+
+//         public String getPassword() { return password; }
+//         public void setPassword(String password) { this.password = password; }
+
+//         public String getConfirmPassword() { return confirmPassword; }
+//         public void setConfirmPassword(String confirmPassword) {
+//             this.confirmPassword = confirmPassword;
+//         }
+//         public String getRole() { return role; }
+//         public void setRole(String role) { this.role = role; }
+//     }
+
+//     public static class LoginRequest {
+//         private String username;
+//         private String password;
+
+//         // Getters and Setters
+//         public String getUsername() { return username; }
+//         public void setUsername(String username) {
+//             this.username = username;
+//         }
+
+//         public String getPassword() { return password; }
+//         public void setPassword(String password) { this.password = password; }
+
+//     }
+
+//     public static class UpdatedRequest {
+//         private String role;
+//         private Boolean approved;
+
+//         // Getters and Setters
+//         public String getRole() { return role; }
+//         public void setRole(String role) { this.role = role; }
+
+//         public Boolean getApproved() { return approved; }
+//         public void setApproved(Boolean approved) { this.approved = approved; }
+//     }
+
+//     public static class ForgotPasswordRequest {
+//         private String email;
+
+//         // Getters and Setters
+//         public String getEmail() { return email; }
+//         public void setEmail(String email) { this.email = email; }
+//     }
+
+//     public static class ResetPasswordRequest {
+//         private String token;
+//         private String newPassword;
+//         private String confirmPassword;
+
+//         // Getters and Setters
+//         public String getToken() { return token; }
+//         public void setToken(String token) { this.token = token; }
+
+//         public String getNewPassword() { return newPassword; }
+//         public void setNewPassword(String newPassword) {
+//             this.newPassword = newPassword;
+//         }
+
+//         public String getConfirmPassword() { return confirmPassword; }
+//         public void setConfirmPassword(String confirmPassword) {
+//             this.confirmPassword = confirmPassword;
+//         }
+//     }
+
+//     public static class VerifyEmailRequest {
+//         private String token;
+
+//         // Getters and Setters
+//         public String getToken() { return token; }
+//         public void setToken(String token) { this.token = token; }
+//     }
+// }package com.kathirvel.HME.dto;
+
+// import com.kathirvel.HME.Model.Roles;
+// import java.util.Set;
+// import java.util.stream.Collectors;
+
+// public class UserDto {
+//     private int id;
+//     private String username;
+//     private String email;
+//     private Set<String> roles;
+//     private boolean approved;
+
+//     // Constructor with all fields
+//     public UserDto(int id, String username, String email, Set<Roles> roles, boolean approved) {
+//         this.id = id;
+//         this.username = username;
+//         this.email = email;
+//         this.roles = roles.stream()
+//                 .map(Enum::name)
+//                 .collect(Collectors.toSet());
+//         this.approved = approved;
+//     }
+
+//     // Getters
+//     public int getId() { return id; }
+//     public String getUsername() { return username; }
+//     public String getEmail() { return email; }
+//     public Set<String> getRoles() { return roles; }
+//     public boolean isApproved() { return approved; }
+// }package com.kathirvel.HME.Model;
+
+// import com.fasterxml.jackson.annotation.JsonBackReference;
+// import com.fasterxml.jackson.annotation.JsonFormat;
+// import com.fasterxml.jackson.annotation.JsonIgnore;
+// import jakarta.persistence.*;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.time.LocalDateTime;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name = "appointmentdetails")
+// public class Appointment {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     @Column(name = "appointment_id")
+//     private int id;
+//     @Column(name = "appointment_time")
+//     @JsonFormat(pattern = "yyyy-MM-dd'T:'HH:mm")
+//     private LocalDateTime appointmentTime;
+
+
+//     @ManyToOne
+//     @JoinColumn(name = "doctor_id")
+//     @JsonBackReference(value = "doctor-appointments")
+//     private Doctor doctor;
+
+//     @ManyToOne
+//     @JoinColumn(name = "patient_id")
+//     @JsonBackReference(value = "patient-appointments")
+//     private Patient patient;
+// }
+// package com.kathirvel.HME.Model;
+
+// import com.fasterxml.jackson.annotation.JsonBackReference;
+// import com.fasterxml.jackson.annotation.JsonFormat;
+// import com.fasterxml.jackson.annotation.JsonIgnore;
+// import jakarta.persistence.*;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.time.LocalDateTime;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name = "appointmentdetails")
+// public class Appointment {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     @Column(name = "appointment_id")
+//     private int id;
+//     @Column(name = "appointment_time")
+//     @JsonFormat(pattern = "yyyy-MM-dd'T:'HH:mm")
+//     private LocalDateTime appointmentTime;
+
+
+//     @ManyToOne
+//     @JoinColumn(name = "doctor_id")
+//     @JsonBackReference(value = "doctor-appointments")
+//     private Doctor doctor;
+
+//     @ManyToOne
+//     @JoinColumn(name = "patient_id")
+//     @JsonBackReference(value = "patient-appointments")
+//     private Patient patient;
+// }
+// package com.kathirvel.HME.Model;
+
+// import com.fasterxml.jackson.annotation.JsonIgnore;
+// import com.fasterxml.jackson.annotation.JsonManagedReference;
+// import jakarta.persistence.*;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.util.List;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name ="patientdetails")
+// public class Patient {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     @Column(name = "patient_id")
+//     private int id;
+//     @Column(name = "patient_firstName")
+//     private String firstName;
+//     @Column(name = "patient_lastName")
+//     private String lastName;
+//     @Column(name = "patient_phone")
+//     private Long phone;
+//     @Column(name = "patient_address")
+//     private String address;
+//     @Column(name = "patient_gender")
+//     private String gender;
+
+//     @OneToMany(mappedBy = "patient", cascade = CascadeType.ALL, orphanRemoval = true)
+//     @JsonManagedReference(value = "patient-appointments")
+//     private List<Appointment> appointments;
+
+// }
+// package com.kathirvel.HME.Model;
+
+// public enum Roles {
+//     SUPER_ADMIN,
+//     ADMIN,
+//     DOCTOR
+// }
+// package com.kathirvel.HME.Model;
+
+// import jakarta.persistence.*;
+// import jakarta.validation.constraints.Email;
+// import lombok.AllArgsConstructor;
+// import lombok.Data;
+// import lombok.NoArgsConstructor;
+
+// import java.util.Date;
+// import java.util.Set;
+// import java.util.UUID;
+
+// @Data
+// @NoArgsConstructor
+// @AllArgsConstructor
+// @Entity
+// @Table(name = "users")
+// public class User {
+//     @Id
+//     @GeneratedValue(strategy = GenerationType.IDENTITY)
+//     private Integer id;
+
+//     @Column(unique = true)
+//     private String username;
+
+//     @Column(unique = true)
+//     @Email(message = "Email should be valid")
+//     private String email;
+
+//     private String password;
+
+//     @Column(name = "approved", nullable = false,columnDefinition = "boolean default false")
+//     private Boolean approved = false;
+
+//     @Column(name = "verification_token")
+//     private String verificationToken;
+
+//     @Column(name = "reset_token")
+//     private String resetToken;
+
+//     @Column(name = "token_expiry")
+//     private Date tokenExpiry;
+
+//     @ElementCollection(targetClass = Roles.class, fetch = FetchType.EAGER)
+//     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"))
+//     @Enumerated(EnumType.STRING)
+//     @Column(name = "role")
+//     private Set<Roles> roles;
+//     public Boolean isApproved() {
+//         return this.approved;
+//     }
+
+// }package com.kathirvel.HME.Repositary;
+
+// import com.kathirvel.HME.Model.User;
+// import org.springframework.data.jpa.repository.JpaRepository;
+
+// import java.util.Date;
+// import java.util.List;
+// import java.util.Optional;
+
+// public interface UserRepository extends JpaRepository<User, Integer> {
+
+//    Optional<User> findByUsername(String username);
+
+//    Optional<User> findByEmail(String email);
+
+//    Optional<User> findByResetToken(String resetToken);
+
+//    List<User> findByApprovedFalse();
+
+// //   List<User> findByTokenExpiryBefore(Date now);
+
+//    // For checking existing username or email during registration
+// //   boolean existsByUsername(String username);
+// //   boolean existsByEmail(String email);
+
+//    // For admin approval dashboard
+//    List<User> findByApproved(boolean approved);
+
+//    // For verification token check
+// //   Optional<User> findByVerificationToken(String token);
+// }package com.kathirvel.HME.Service;
+
+// import com.kathirvel.HME.Model.Appointment;
+// import com.kathirvel.HME.Model.Doctor;
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Repositary.AppointmentRepo;
+// import com.kathirvel.HME.Repositary.DoctorRepo;
+// import com.kathirvel.HME.Repositary.PatientRepo;
+// import com.kathirvel.HME.dto.AppointmentDto;
+// import jakarta.transaction.Transactional;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.stereotype.Service;
+// import org.springframework.web.bind.annotation.PostMapping;
+// import org.springframework.web.bind.annotation.RequestBody;
+
+// import java.util.List;
+// import java.util.stream.Collectors;
+
+// @Service
+// public class AppointmentService {
+//     @Autowired
+//     private AppointmentRepo aRepo;
+
+//     @Autowired
+//     private DoctorRepo dRepo;
+
+//     @Autowired
+//     private PatientRepo pRepo;
+
+//     public List<AppointmentDto> getAppointments() {
+//         return aRepo.findAll().stream()
+//                 .map(AppointmentDto::new)
+//                 .collect(Collectors.toList());
+//     }
+
+//     public Appointment addAppointment(AppointmentDto dto) {
+//         Appointment appointment = new Appointment();
+//         appointment.setAppointmentTime(dto.getAppointmentTime());
+
+//         Doctor doctor = dRepo.findById(dto.getDoctorId())
+//                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
+//         Patient patient = pRepo.findById(dto.getPatientId())
+//                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+//         appointment.setDoctor(doctor);
+//         appointment.setPatient(patient);
+
+//         return aRepo.save(appointment);
+//     }
+
+//     public Appointment getAppointmentsById(int id) {
+//         return aRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
+//     }
+
+//     public Appointment updateAppointment(int id, AppointmentDto dto) {
+//         Appointment existing = aRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
+
+//         existing.setAppointmentTime(dto.getAppointmentTime());
+
+//         Doctor doctor = dRepo.findById(dto.getDoctorId())
+//                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
+//         Patient patient = pRepo.findById(dto.getPatientId())
+//                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+//         existing.setDoctor(doctor);
+//         existing.setPatient(patient);
+
+//         return aRepo.save(existing);
+//     }
+
+//     @Transactional
+//     public void deleteAppointmentById(int id) {
+//         Appointment appointment = aRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
+//         aRepo.delete(appointment);
+//     }
+// }
+
+// package com.kathirvel.HME.Service;
+
+// import com.kathirvel.HME.Model.Doctor;
+// import com.kathirvel.HME.Repositary.DoctorRepo;
+// import jakarta.transaction.Transactional;
+// import org.hibernate.StaleObjectStateException;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.orm.ObjectOptimisticLockingFailureException;
+// import org.springframework.stereotype.Service;
+
+// import java.util.List;
+
+// @Service
+// public class DoctorService {
+//     @Autowired
+//     private DoctorRepo dRepo;
+
+
+//     public Doctor addDoctor(Doctor doctor) {
+//         return dRepo.save(doctor);
+//     }
+
+//     public List<Doctor> getDoctor() {
+//         return dRepo.findAll();
+//     }
+
+//     public Doctor getDoctoryById(int id) {
+//         return dRepo.findById(id).orElseThrow(() -> new RuntimeException("Doctor not found"));
+//     }
+//     public Doctor updateDoctorById(int id,Doctor doctor) {
+//         Doctor updateDoctor = dRepo.findById(id).orElseThrow(() -> new RuntimeException("Doctor not found"));
+//         updateDoctor.setName(doctor.getName());
+//         updateDoctor.setPhone(doctor.getPhone());
+//         updateDoctor.setGender(doctor.getGender());
+//         updateDoctor.setAvailable(doctor.getAvailable());
+//         return dRepo.save(updateDoctor);
+//     }
+
+//     @Transactional
+//     public void deleteDoctorById(int id) {
+//         Doctor doctor = dRepo.findById(id)
+//                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
+
+//         dRepo.delete(doctor);
+//     }
+
+
+// }
+// package com.kathirvel.HME.Service;
+
+// import com.kathirvel.HME.Model.Patient;
+// import com.kathirvel.HME.Repositary.PatientRepo;
+// import jakarta.transaction.Transactional;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.stereotype.Service;
+
+// import java.util.List;
+
+// @Service
+// public class PatientService {
+//     @Autowired
+//     private PatientRepo pRepo;
+
+//     public Patient addPatient(Patient patient) {
+//         return pRepo.save(patient);
+//     }
+
+//     public List<Patient> getPatient() {
+//         return pRepo.findAll();
+//     }
+
+//     public Patient getPatientId(int id) {
+//         return pRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
+//     }
+
+//     public Patient updatePatient(int id, Patient updatePatient) {
+//         Patient patient = pRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
+//         patient.setFirstName(updatePatient.getFirstName());
+//         patient.setLastName(updatePatient.getLastName());
+//         patient.setPhone(updatePatient.getPhone());
+//         patient.setAddress(updatePatient.getAddress());
+//         patient.setGender(updatePatient.getGender());
+//         return pRepo.save(patient);
+//     }
+//     @Transactional
+//     public Patient deletePatientById(int id) {
+//          Patient patient= pRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
+//          pRepo.deleteById(id);
+//          return patient;
+//     }
+// }
+// package com.kathirvel.HME;
+
+// import com.kathirvel.HME.Model.Roles;
+// import com.kathirvel.HME.Model.User;
+// import com.kathirvel.HME.Repositary.UserRepository;
+// import jakarta.annotation.PostConstruct;
+// import org.springframework.beans.factory.annotation.Autowired;
+// import org.springframework.security.crypto.password.PasswordEncoder;
+// import org.springframework.stereotype.Component;
+
+// import java.util.Set;
+
+// @Component
+// public class DataInitializer {
+//     @Autowired
+//     private UserRepository userRepository;
+//     @Autowired
+//     private PasswordEncoder passwordEncoder;
+
+//     @PostConstruct
+//     public void createAdminUser() {
+//         userRepository.findByUsername("super_admin").ifPresentOrElse(
+//                 user -> {},  // Admin already exists
+//                 () -> {
+//                     User admin = new User();
+//                     admin.setUsername("super_admin");
+//                     admin.setPassword(passwordEncoder.encode("superadmin123"));
+//                     admin.setRoles(Set.of(Roles.SUPER_ADMIN));
+//                     admin.setApproved(true);  // Explicitly approve admin
+//                     userRepository.save(admin);
+//                 }
+//         );
+//     }
+// }
+// spring.application.name=HME
+// spring.datasource.url=jdbc:postgresql://localhost:5432/kathir
+// spring.datasource.username=postgres
+// spring.datasource.password=postgres
+// spring.jpa.hibernate.ddl-auto=update
+// spring.jpa.show-sql=true
+// spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+// jwt.secret=OQ1p1A9pvnFxv2B7nG0+0TtuYY6qKoOr4nxAD+dU2E3Ek9psnAmvcCjEr9tLbF1KCEYtxaNh2UQpWZtxJKDG+Q==
+// server.port=8081
+
+// import React, { useState, useEffect } from 'react';
+// import { createAppointment, listDoctors, listPatients } from './CommonUrl';
+// import { useNavigate } from 'react-router-dom';
+
+// const AddAppointmentComponent = () => {
+//   const navigate = useNavigate();
+//   const [appointment, setAppointment] = useState({
+//     appointmentTime: '',
+//     doctorId: '',
+//     patientId: '',
+//   });
+//   const [doctors, setDoctors] = useState([]);
+//   const [patients, setPatients] = useState([]);
+//   const [errors, setErrors] = useState({});
+//   const [availabilityError, setAvailabilityError] = useState('');
+
+//   useEffect(() => {
+//     listDoctors()
+//       .then(res => { 
+//           setDoctors(res.data.filter(doc => doc.available === 'Yes'))
+//       })
+//       .catch(() => setDoctors([]));
+
+//     listPatients()
+//       .then(res => setPatients(res.data))
+//       .catch(() => setPatients([]));
+//   }, []);
+
+//   const handleChange = (e) => {
+//     const { name, value } = e.target;
+//     setAppointment(prev => ({ ...prev, [name]: value }));
+//     setAvailabilityError('');
+//   };
+
+//   const validate = () => {
+//     let tempErrors = {};
+//     if (!appointment.appointmentTime.trim()) tempErrors.appointmentTime = "Appointment time is required";
+//     if (!appointment.doctorId) tempErrors.doctorId = "Doctor must be selected";
+//     if (!appointment.patientId) tempErrors.patientId = "Patient must be selected";
+//     setErrors(tempErrors);
+//     return Object.keys(tempErrors).length === 0;
+//   };
+
+//   const handleSubmit = (e) => {
+//     e.preventDefault();
+//     if (!validate()) return;
+
+//     const selectedDoctor = doctors.find(doc => doc.id == appointment.doctorId);
+//     if (!selectedDoctor || selectedDoctor.available !== 'Yes') {
+//       setAvailabilityError('Selected doctor is not available');
+//       return;
+//     }
+
+//     createAppointment(appointment)
+//       .then(() => navigate('/appointments'))
+//       .catch(err => {
+//         console.error("Failed to create appointment", err);
+//         if (err.response?.data?.includes("not available")) {
+//           setAvailabilityError(err.response.data);
+//         } else {
+//           setErrors({ submit: "Failed to create appointment. Try again." });
+//         }
+//       });
+//   };
+
+//   return (
+//     <div className="container">
+//       <h2>Add Appointment</h2>
+//       {errors.submit && <div className="alert alert-danger">{errors.submit}</div>}
+//       {availabilityError && <div className="alert alert-warning">{availabilityError}</div>}
+//       <form onSubmit={handleSubmit}>
+//         <div className="mb-3">
+//           <label>Appointment Time</label>
+//           <input
+//             type="datetime-local"
+//             name="appointmentTime"
+//             value={appointment.appointmentTime}
+//             onChange={handleChange}
+//             className={`form-control ${errors.appointmentTime ? 'is-invalid' : ''}`}
+//           />
+//           {errors.appointmentTime && <div className="invalid-feedback">{errors.appointmentTime}</div>}
+//         </div>
+//         <div className="mb-3">
+//           <label>Doctor</label>
+//           <select
+//             name="doctorId"
+//             value={appointment.doctorId}
+//             onChange={handleChange}
+//             className={`form-select ${errors.doctorId ? 'is-invalid' : ''}`}
+//           >
+//             <option value="">Select Doctor</option>
+//             {doctors
+//               .filter(doctor => doctor.available === 'Yes')
+//               .map(doc => (
+//                 <option key={doc.id} value={doc.id}>
+//                   {doc.name} (Available)
+//                 </option>
+//               ))}
+//             {doctors
+//               .filter(doctor => doctor.available !== 'Yes')
+//               .map(doc => (
+//                 <option key={doc.id} value={doc.id} disabled>
+//                   {doc.name} (Not Available)
+//                 </option>
+//               ))}
+//           </select>
+//           {errors.doctorId && <div className="invalid-feedback">{errors.doctorId}</div>}
+//           </div>
+//           <div className="mb-3">
+//           <label>Patient</label>
+//           <select
+//             name="patientId"
+//             value={appointment.patientId}
+//             onChange={handleChange}
+//             className={`form-select ${errors.patientId ? 'is-invalid' : ''}`}
+//           >
+//             <option value="">Select Patient</option>
+//             {patients.map(pat => (
+//               <option key={pat.id} value={pat.id}>{pat.firstName} {pat.lastName}</option>
+//             ))}
+//           </select>
+//           {errors.patientId && <div className="invalid-feedback">{errors.patientId}</div>}
+//         </div>
+//         <button type="submit" className="btn btn-success">Add Appointment</button>
+//       </form>
+//     </div>
+//   );
+// };
+
+// export default AddAppointmentComponent;
+// import React, { useState } from 'react';
+// import { createDoctors } from './CommonUrl';
+// import { useNavigate } from 'react-router-dom';
+
+// const AddDoctorComponent = () => {
+//   const navigate = useNavigate();
+
+//   const [doctor, setDoctor] = useState({
+//     name: '',
+//     phone: '',
+//     gender: '',
+//     available: ''
+//   });
+
+//   const [errors, setErrors] = useState({});
+
+//   const handleChange = (e) => {
+//     const { name, value } = e.target;
+//     setDoctor(prev => ({ ...prev, [name]: value }));
+//   };
+
+//   const validate = () => {
+//     let tempErrors = {};
+//     if (!doctor.name.trim()) tempErrors.name = "Name is required";
+//     if (!doctor.phone.trim()) tempErrors.phone = "Phone is required";
+//     if (!doctor.gender.trim()) tempErrors.gender = "Gender is required";
+//     if (!doctor.available.trim()) tempErrors.available = "Availability is required";
+//     setErrors(tempErrors);
+//     return Object.keys(tempErrors).length === 0;
+//   };
+
+//   const handleSubmit = (e) => {
+//     e.preventDefault();
+//     if (validate()) {
+//       createDoctors(doctor)
+//         .then(() => navigate('/doctors'))
+//         .catch(err => {
+//           console.error("Failed to add doctor", err);
+//           setErrors({ submit: "Failed to add doctor. Please try again." });
+//         });
+//     }
+//   };
+
+//   return (
+//     <div className="container">
+//       <h2>Add Doctor</h2>
+//       {errors.submit && <div className="alert alert-danger">{errors.submit}</div>}
+//       <form onSubmit={handleSubmit}>
+//         <div className="mb-3">
+//           <label>Name</label>
+//           <input
+//             type="text"
+//             name="name"
+//             value={doctor.name}
+//             onChange={handleChange}
+//             className={`form-control ${errors.name ? 'is-invalid' : ''}`}
+//           />
+//           {errors.name && <div className="invalid-feedback">{errors.name}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Phone</label>
+//           <input
+//             type="text"
+//             name="phone"
+//             value={doctor.phone}
+//             onChange={handleChange}
+//             className={`form-control ${errors.phone ? 'is-invalid' : ''}`}
+//           />
+//           {errors.phone && <div className="invalid-feedback">{errors.phone}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Gender</label>
+//           <select
+//             name="gender"
+//             value={doctor.gender}
+//             onChange={handleChange}
+//             className={`form-select ${errors.gender ? 'is-invalid' : ''}`}
+//           >
+//             <option value="">Select Gender</option>
+//             <option value="MALE">Male</option>
+//             <option value="FEMALE">Female</option>
+//             <option value="OTHER">Other</option>
+//           </select>
+//           {errors.gender && <div className="invalid-feedback">{errors.gender}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Available</label>
+//           <input
+//             type="text"
+//             name="available"
+//             value={doctor.available}
+//             onChange={handleChange}
+//             className={`form-control ${errors.available ? 'is-invalid' : ''}`}
+//           />
+//           {errors.available && <div className="invalid-feedback">{errors.available}</div>}
+//         </div>
+
+//         <button type="submit" className="btn btn-success">Add Doctor</button>
+//       </form>
+//     </div>
+//   );
+// };
+
+// export default AddDoctorComponent;
+// import React, { useState } from 'react';
+// import { createPatients } from './CommonUrl';
+// import { useNavigate } from 'react-router-dom';
+
+// const AddPatientComponent = () => {
+//   const navigate = useNavigate();
+
+//   const [patient, setPatient] = useState({
+//     firstName: '',
+//     lastName: '',
+//     phone: '',
+//     address: '',
+//     gender: ''
+//   });
+
+//   const [errors, setErrors] = useState({});
+
+//   const handleChange = (e) => {
+//     const { name, value } = e.target;
+//     setPatient(prev => ({ ...prev, [name]: value }));
+//   };
+
+//   const validate = () => {
+//     let tempErrors = {};
+//     if (!patient.firstName.trim()) tempErrors.firstName = "First Name is required";
+//     if (!patient.lastName.trim()) tempErrors.lastName = "Last Name is required";
+//     if (!patient.phone.trim()) tempErrors.phone = "Phone is required";
+//     if (!patient.address.trim()) tempErrors.address = "Address is required";
+//     if (!patient.gender.trim()) tempErrors.gender = "Gender is required";
+//     setErrors(tempErrors);
+//     return Object.keys(tempErrors).length === 0;
+//   };
+
+//   const handleSubmit = (e) => {
+//     e.preventDefault();
+//     if (validate()) {
+//       createPatients(patient)
+//         .then(() => navigate('/patient'))
+//         .catch(err => {
+//           console.error("Failed to add patient", err);
+//           setErrors({ submit: "Failed to add patient. Please try again." });
+//         });
+//     }
+//   };
+
+//   return (
+//     <div className="container">
+//       <h2>Add Patient</h2>
+//       {errors.submit && <div className="alert alert-danger">{errors.submit}</div>}
+//       <form onSubmit={handleSubmit}>
+//         <div className="mb-3">
+//           <label>First Name</label>
+//           <input
+//             type="text"
+//             name="firstName"
+//             value={patient.firstName}
+//             onChange={handleChange}
+//             className={`form-control ${errors.firstName ? 'is-invalid' : ''}`}
+//           />
+//           {errors.firstName && <div className="invalid-feedback">{errors.firstName}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Last Name</label>
+//           <input
+//             type="text"
+//             name="lastName"
+//             value={patient.lastName}
+//             onChange={handleChange}
+//             className={`form-control ${errors.lastName ? 'is-invalid' : ''}`}
+//           />
+//           {errors.lastName && <div className="invalid-feedback">{errors.lastName}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Phone</label>
+//           <input
+//             type="text"
+//             name="phone"
+//             value={patient.phone}
+//             onChange={handleChange}
+//             className={`form-control ${errors.phone ? 'is-invalid' : ''}`}
+//           />
+//           {errors.phone && <div className="invalid-feedback">{errors.phone}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Address</label>
+//           <input
+//             type="text"
+//             name="address"
+//             value={patient.address}
+//             onChange={handleChange}
+//             className={`form-control ${errors.address ? 'is-invalid' : ''}`}
+//           />
+//           {errors.address && <div className="invalid-feedback">{errors.address}</div>}
+//         </div>
+
+//         <div className="mb-3">
+//           <label>Gender</label>
+//           <select
+//             name="gender"
+//             value={patient.gender}
+//             onChange={handleChange}
+//             className={`form-select ${errors.gender ? 'is-invalid' : ''}`}
+//           >
+//             <option value="">Select Gender</option>
+//             <option value="MALE">Male</option>
+//             <option value="FEMALE">Female</option>
+//             <option value="OTHER">Other</option>
+//           </select>
+//           {errors.gender && <div className="invalid-feedback">{errors.gender}</div>}
+//         </div>
+
+//         <button type="submit" className="btn btn-success">Add Patient</button>
+//       </form>
+//     </div>
+//   );
+// };
+
+// export default AddPatientComponent;
+// import axios from 'axios';
+
+// const api = axios.create({
+//     baseURL: 'http://localhost:8081',
+//     withCredentials: true
+// });
+
+// // Allow PATCH shorthand usage
+// api.patch = async (url, data, config) => {
+//     return api.request({
+//         ...config,
+//         url,
+//         data,
+//         method: 'patch'
+//     });
+// };
+
+// // Add request interceptor to include token
+// api.interceptors.request.use(
+//     config => {
+//         const token = localStorage.getItem('token');
+//         if (token) {
+//             config.headers.Authorization = `Bearer ${token}`;
+//         }
+//         return config;
+//     },
+//     error => Promise.reject(error)
+// );
+
+// // Add response interceptor to handle 401/403
+// api.interceptors.response.use(
+//     response => response,
+//     error => {
+//         if (error.response?.status === 401 || error.response?.status === 403) {
+//             localStorage.removeItem('token');
+//             localStorage.removeItem('roles');
+//             localStorage.removeItem('user');
+//             window.location = '/login';
+//         }
+//         return Promise.reject(error);
+//     }
+// );
+
+
+// export default api;
+// import React, { useState } from 'react';
+// import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+// import Login from './Login';
+// import ListPatients from './ListPatients';
+// import AddPatientComponent from './AddPatientComponent';
+// import 'bootstrap/dist/css/bootstrap.min.css';
+
+// import ListDoctors from './ListDoctors';
+// import AddDoctorComponent from './AddDoctorComponent';
+
+// import Listappointments from './Listappointments';
+// import AddAppointmentComponent from './AddAppointmentComponent';
+
+// import ProtectedRoute from './ProtectedRoute';
+// import HeaderComponent from './HeaderComponent';
+// import DeletePatient from './DeletePatient';
+// import DeleteAppointment from './DeleteAppointment';
+// import EditPatient from './EditPatient';
+// import EditDoctor from './EditDoctors';
+// import DeleteDoctor from './DeleteDoctor';
+// import EditAppointment from './EditAppointment';
+// import RoleCheck from './RoleCheck';
+// import UserManagement from './UserManagement';
+// import Signup from './Signup';
+// import ForgotPassword from './ForgotPassword';
+// import ResetPassword from './ResetPassword';
+
+// function App() {
+//   const [, setToken] = useState(localStorage.getItem('token'));
+
+//   const [role, setRole] = useState(localStorage.getItem('role'));
+
+//   const handleLogin = (token, role) => {
+//     setToken(token);
+//     setRole(role);
+//   };
+
+//   const handleLogout = () => {
+//     localStorage.removeItem('token');
+//     localStorage.removeItem('role');
+//     setToken(null);
+//     setRole(null);
+//   };
+
+//   return (
+//     <BrowserRouter>
+//       <HeaderComponent onLogout={handleLogout} role={role} />
+//       <Routes>
+//         <Route path="/signup" element={<Signup />} />
+//         <Route path="/login" element={<Login onLogin={handleLogin} />} />
+//         <Route path="/rolecheck" element={<RoleCheck />} />
+//         <Route path="/" element={<Navigate to="/patient" replace />} />
+
+//         {/* Routes accessible by all logged-in roles */}
+//         <Route element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'DOCTOR']} />}>
+//           <Route path="/patient" element={<ListPatients />} />
+//           <Route path="/doctors" element={<ListDoctors />} />
+//           <Route path="/appointments" element={<Listappointments />} />
+//           <Route path="/forgot-password" element={<ForgotPassword />} />
+//           <Route path="/reset-password/:token" element={<ResetPassword />} />
+//         </Route>
+
+//         {/* Add, Edit, Delete routes for Patient - only SUPER_ADMIN and ADMIN */}
+//         <Route element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN']} />}>
+//           <Route path="/add-patient" element={<AddPatientComponent />} />
+//           <Route path="/add-doctor" element={<AddDoctorComponent />} />
+//           <Route path="/add-appointment" element={<AddAppointmentComponent />} />
+//           <Route path="/edit-patient/:id" element={<EditPatient />} />
+//           <Route path="/edit-doctor/:id" element={<EditDoctor />} />
+//           <Route path="/edit-appointment/:id" element={<EditAppointment />} />
+//         </Route>
+
+//         <Route element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']} />}>
+//           <Route path="/users" element={<UserManagement />} />
+//           <Route path="/delete-patient/:id" element={<DeletePatient />} />
+//           <Route path="/delete-doctor/:id" element={<DeleteDoctor />} />
+//           <Route path="/delete-appointment/:id" element={<DeleteAppointment />} />
+//         </Route>
+
+//         {/* Redirect unknown routes */}
+//         <Route path="*" element={<Navigate to="/" replace />} />
+//       </Routes>
+//     </BrowserRouter>
+//   );
+// }
+
+// export default App;
+// export function getCurrentRole() {
+//     const role = localStorage.getItem('role');
+//     return role ? role.trim().toUpperCase() : null;
+// }
+// import api from './api';
+
+// export const listPatients = () => api.get('/Papi/patient');
+// export const createPatients = (patient) => api.post('/Papi/patient', patient);
+// export const deletePatient = (id) => api.delete(`/Papi/${id}`);
+
+// export const listDoctors = () => api.get('/Dapi/doctor');
+// export const createDoctors = (doctor) => api.post('/Dapi/doctor', doctor);
+// export const deleteDoctor = (id) => api.delete(`/Dapi/${id}`);
+
+// export const listappointments = () => api.get('/Aapi/appointments');
+// export const createAppointment = (appointment) => api.post('/Aapi/appointments', appointment);
+// export const deleteAppointment = (id) => api.delete(`/Aapi/${id}`);
+// import React, { useEffect, useRef } from 'react';
+// import { useNavigate, useParams } from 'react-router-dom';
+// import { deleteAppointment } from './CommonUrl';
+
+// const DeleteAppointment = () => {
+//   const { id } = useParams();
+//   const navigate = useNavigate();
+//   const isDeleted = useRef(false); // Prevent multiple deletions
+
+//   useEffect(() => {
+//     if (isDeleted.current) return; // Prevent re-entry
+//     isDeleted.current = true;
+
+//     const confirmAndDelete = async () => {
+//       if (window.confirm('Are you sure you want to delete this appointment?')) {
+//         try {
+//           await deleteAppointment(id);
+//           navigate('/appointments');
+//         } catch (err) {
+//           alert('Failed to delete appointment');
+//           navigate('/appointments');
+//         }
+//       } else {
+//         navigate('/appointments');
+//       }
+//     };
+
+//     confirmAndDelete();
+//   }, [id, navigate]);
+
+//   return <div>Deleting appointment...</div>;
+// };
+
+// export default DeleteAppointment;
+// import React, { useEffect, useRef } from 'react';
+// import { useNavigate, useParams } from 'react-router-dom';
+// import { deleteDoctor } from './CommonUrl';
+
+// const DeleteDoctor = () => {
+//   const { id } = useParams();
+//   const navigate = useNavigate();
+//   const isDeleted = useRef(false); // ✅ avoid multiple deletions
+
+//   useEffect(() => {
+//     if (isDeleted.current) return; // ✅ Prevent re-entry
+//     isDeleted.current = true;
+
+//     const confirmAndDelete = async () => {
+//       if (window.confirm('Are you sure you want to delete this doctor?')) {
+//         try {
+//           await deleteDoctor(id);
+//           navigate('/doctors')
+//         } catch (err) {
+//           alert('Failed to delete doctor');
+//         } finally {
+//           navigate('/doctors');
+//         }
+//       } else {
+//         navigate('/doctors');
+//       }
+//     };
+
+//     confirmAndDelete();
+//   }, [id, navigate]);
+
+//   return <div>Deleting doctor...</div>;
+// };
+
+// export default DeleteDoctor;
+// import React, { useEffect, useRef } from 'react';
+// import { useNavigate, useParams } from 'react-router-dom';
+// import { deletePatient } from './CommonUrl';
+
+// const DeletePatient = () => {
+//   const { id } = useParams();
+//   const navigate = useNavigate();
+//   const isDeleted = useRef(false);
+
+//   useEffect(() => {
+//     if (isDeleted.current) return;
+//     isDeleted.current = true;
+
+//     const confirmAndDelete = async () => {
+//       if (window.confirm('Are you sure you want to delete this patient?')) {
+//         try {
+//           await deletePatient(id);
+//           navigate('/patients')
+//         } catch (err) {
+//           alert('Failed to delete patient');
+//         } finally {
+//           navigate('/patients');
+//         }
+//       } else {
+//         navigate('/patients');
+//       }
+//     };
+
+//     confirmAndDelete();
+//   }, [id, navigate]);
+
+//   return <div>Deleting patient...</div>;
+// };
+
+// export default DeletePatient;
+// import React, { useEffect, useState } from 'react';
+// import { useParams, useNavigate } from 'react-router-dom';
+// import api from './api';
+// import { listDoctors, listPatients } from './CommonUrl';
+// const EditAppointment = () => {
+//     const { id } = useParams();
+//     const navigate = useNavigate();
+
+//     const [appointment, setAppointment] = useState({
+//         appointmentTime: '',
+//         doctorId: '',
+//         patientId: '',
+//     });
+//     const [doctors, setDoctors] = useState([]);
+//     const [patients, setPatients] = useState([]);
+//     const [error, setError] = useState('');
+
+//     useEffect(() => {
+//         // Fetch doctors and patients
+//         listDoctors()
+//             .then(res => setDoctors(res.data))
+//             .catch(() => setDoctors([]));
+
+//         listPatients()
+//             .then(res => setPatients(res.data))
+//             .catch(() => setPatients([]));
+
+//         // Fetch appointment details
+//         api.get(`/Aapi/${id}`)  // Changed from /Aapi to /appointments (verify correct endpoint)
+//             .then(res => {
+//                 setAppointment({
+//                     appointmentTime: res.data.appointmentTime,
+//                     doctorId: res.data.doctor?.id || res.data.doctorId, // Handle both nested and flat structures
+//                     patientId: res.data.patient?.id || res.data.patientId,
+//                 });
+//             })
+//             .catch(err => {
+//                 console.error('Error fetching appointment:', err); // Add this for debugging
+//                 setError('Failed to fetch appointment details');
+//             });
+//     }, [id]);
+
+//     const handleChange = (e) => {
+//         const { name, value } = e.target;
+//         setAppointment(prev => ({ ...prev, [name]: value }));
+//     };
+
+//     const handleSubmit = (e) => {
+//         e.preventDefault();
+//         api.put(`/Aapi/${id}`, appointment)
+//             .then(() => {
+//                 // Optional: show success message
+//                 navigate('/appointments'); // Redirect to appointments list
+//             })
+//             .catch((error) => {
+//                 console.error('Update error:', error);
+//                 setError('Failed to update appointment');
+//             });
+//     };
+
+//     return (
+//         <div className="container">
+//             <h2>Edit Appointment</h2>
+//             {error && <div className="alert alert-danger">{error}</div>}
+
+//             <form onSubmit={handleSubmit}>
+//                 <div className="mb-3">
+//                     <label>Appointment Time</label>
+//                     <input
+//                         type="datetime-local"
+//                         name="appointmentTime"
+//                         value={appointment.appointmentTime}
+//                         onChange={handleChange}
+//                         className="form-control"
+//                         required
+//                     />
+//                 </div>
+
+//                 <div className="mb-3">
+//                     <label>Doctor</label>
+//                     <select
+//                         name="doctorId"
+//                         value={appointment.doctorId}
+//                         onChange={handleChange}
+//                         className="form-select"
+//                         required
+//                     >
+//                         <option value="">Select Doctor</option>
+//                         {doctors
+//                             .filter(doctor => doctor.available === 'Yes')
+//                             .map(doc => (
+//                                 <option key={doc.id} value={doc.id}>
+//                                     {doc.name} (Available)
+//                                 </option>
+//                             ))}
+//                         {doctors
+//                             .filter(doctor => doctor.available !== 'Yes')
+//                             .map(doc => (
+//                                 <option key={doc.id} value={doc.id} disabled>
+//                                     {doc.name} (Not Available)
+//                                 </option>
+//                             ))}
+//                     </select>
+//                 </div>
+
+//                 <div className="mb-3">
+//                     <label>Patient</label>
+//                     <select
+//                         name="patientId"
+//                         value={appointment.patientId}
+//                         onChange={handleChange}
+//                         className="form-select"
+//                         required
+//                     >
+//                         <option value="">Select Patient</option>
+//                         {patients.map(pat => (
+//                             <option key={pat.id} value={pat.id}>{pat.firstName} {pat.lastName}</option>
+//                         ))}
+//                     </select>
+//                 </div>
+
+//                 <button type="submit" className="btn btn-primary">Update Appointment</button>
+//             </form>
+//         </div>
+//     );
+// };
+
+// export default EditAppointment;
+// import React, { useEffect, useState } from 'react';
+// import { useNavigate, useParams } from 'react-router-dom';
+// import api from './api';
+
+// const EditDoctor = () => {
+//     const { id } = useParams();
+//     const navigate = useNavigate();
+//     const [doctor, setDoctor] = useState({
+//         name: '',
+//         phone: '',
+//         gender: '',
+//         available: ''
+//     });
+//     const [error, setError] = useState('');
+
+//     useEffect(() => {
+//         api.get(`/Dapi/${id}`)
+//             .then(res => setDoctor(res.data))
+//             .catch(() => setError('Failed to fetch doctor details'));
+//     }, [id]);
+
+//     const handleChange = (e) => {
+//         const { name, value } = e.target;
+//         setDoctor(prev => ({ ...prev, [name]: value }));
+//     };
+
+//     const handleSubmit = (e) => {
+//         e.preventDefault();
+//         api.put(`/Dapi/${id}`, doctor)
+//             .then(() => navigate('/doctors'))
+//             .catch(() => setError('Failed to update doctor'));
+//     };
+
+//     return (
+//         <div className="container">
+//             <h2>Edit Doctor</h2>
+//             {error && <div className="alert alert-danger">{error}</div>}
+//             <form onSubmit={handleSubmit}>
+//                 <div className="mb-3">
+//                     <label>Name</label>
+//                     <input type="text" name="name" value={doctor.name} onChange={handleChange} className="form-control" required />
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Phone</label>
+//                     <input type="text" name="phone" value={doctor.phone} onChange={handleChange} className="form-control" required />
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Gender</label>
+//                     <select name="gender" value={doctor.gender} onChange={handleChange} className="form-control" required>
+//                         <option value="">Select</option>
+//                         <option value="MALE">Male</option>
+//                         <option value="FEMALE">Female</option>
+//                         <option value="OTHER">Other</option>
+//                     </select>
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Available</label>
+//                     <select name="available" value={doctor.available} onChange={handleChange} className="form-control" required>
+//                         <option value="">Select</option>
+//                         <option value="Yes">Yes</option>
+//                         <option value="No">No</option>
+//                     </select>
+//                 </div>
+//                 <button type="submit" className="btn btn-primary">Update Doctor</button>
+//             </form>
+//         </div>
+//     );
+// };
+
+// export default EditDoctor;
+// import React, { useEffect, useState } from 'react';
+// import { useNavigate, useParams } from 'react-router-dom';
+// import api from './api';
+
+// const EditPatient = () => {
+//     const { id } = useParams();
+//     const navigate = useNavigate();
+//     const [patient, setPatient] = useState({
+//         firstName: '',
+//         lastName: '',
+//         phone: '',
+//         address: '',
+//         gender: ''
+//     });
+//     const [error, setError] = useState('');
+
+//     useEffect(() => {
+//         api.get(`/Papi/${id}`)
+//             .then(res => setPatient(res.data))
+//             .catch(() => setError('Failed to fetch patient details'));
+//     }, [id]);
+
+//     const handleChange = (e) => {
+//         const { name, value } = e.target;
+//         setPatient(prev => ({ ...prev, [name]: value }));
+//     };
+
+//     const handleSubmit = (e) => {
+//         e.preventDefault();
+//         api.put(`/Papi/${id}`, patient)
+//             .then(() => navigate('/patients'))
+//             .catch(() => setError('Failed to update patient'));
+//     };
+
+//     return (
+//         <div className="container">
+//             <h2>Edit Patient</h2>
+//             {error && <div className="alert alert-danger">{error}</div>}
+//             <form onSubmit={handleSubmit}>
+//                 <div className="mb-3">
+//                     <label>First Name</label>
+//                     <input type="text" name="firstName" value={patient.firstName} onChange={handleChange} className="form-control" required />
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Last Name</label>
+//                     <input type="text" name="lastName" value={patient.lastName} onChange={handleChange} className="form-control" required />
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Phone</label>
+//                     <input type="text" name="phone" value={patient.phone} onChange={handleChange} className="form-control" required />
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Address</label>
+//                     <input type="text" name="address" value={patient.address} onChange={handleChange} className="form-control" required />
+//                 </div>
+//                 <div className="mb-3">
+//                     <label>Gender</label>
+//                     <select name="gender" value={patient.gender} onChange={handleChange} className="form-control" required>
+//                         <option value="">Select</option>
+//                         <option value="MALE">Male</option>
+//                         <option value="FEMALE">Female</option>
+//                         <option value="OTHER">Other</option>
+//                     </select>
+//                 </div>
+//                 <button type="submit" className="btn btn-primary">Update Patient</button>
+//             </form>
+//         </div>
+//     );
+// };
+
+// export default EditPatient;
+// import React from 'react';
+// import { Link, useNavigate } from 'react-router-dom';
+
+// const HeaderComponent = ({ onLogout, role }) => {
+//     const navigate = useNavigate();
+
+//     const handleLogoutClick = () => {
+//         onLogout();
+//         navigate('/login');
+//     };
+
+//     return (
+//         <nav className="navbar navbar-expand navbar-dark bg-dark">
+//             <div className="container-fluid">
+//                 <Link className="navbar-brand" to="/">
+//                     Hospital Management
+//                 </Link>
+//                 <div className="collapse navbar-collapse">
+//                     <ul className="navbar-nav me-auto">
+//                         {role && (
+//                             <>
+//                                 <li className="nav-item">
+//                                     <Link className="nav-link" to="/patient">
+//                                         Patients
+//                                     </Link>
+//                                 </li>
+//                                 <li className="nav-item">
+//                                     <Link className="nav-link" to="/doctors">
+//                                         Doctors
+//                                     </Link>
+//                                 </li>
+//                                 <li className="nav-item">
+//                                     <Link className="nav-link" to="/appointments">
+//                                         Appointments
+//                                     </Link>
+//                                 </li>
+
+//                                 {(role === 'SUPER_ADMIN') && (
+//                                 <li className="nav-item">
+//                                     <Link className="nav-link" to="/users">
+//                                         Registered Users
+//                                     </Link>
+//                                 </li>)}
+//                             </>
+//                         )}
+//                     </ul>
+
+//                     <ul className="navbar-nav ms-auto">
+//                         {role ? (
+//                             <>
+//                                 <li className="nav-item nav-link text-white">Role: {role}</li>
+//                                 <li className="nav-item">
+//                                     <button
+//                                         className="btn btn-outline-light"
+//                                         onClick={handleLogoutClick}
+//                                     >
+//                                         Logout
+//                                     </button>
+//                                 </li>
+//                             </>
+//                         ) : (
+//                             <li className="nav-item">
+//                                 <Link className="nav-link" to="/login">
+//                                     Login
+//                                 </Link>
+//                             </li>
+//                         )}
+//                     </ul>
+//                 </div>
+//             </div>
+//         </nav>
+//     );
+// };
+
+// export default HeaderComponent;
+// import React, { useEffect, useState } from 'react'
+// import { listappointments } from './CommonUrl'
+// import { useNavigate } from 'react-router-dom'
+// import { getCurrentRole } from './Auth'
+// const Listappointments = () => {
+
+//     const [appointments, setAppointments] = useState([])
+//     const navigator2 = useNavigate();
+//     const role = getCurrentRole();
+
+//     useEffect(() => {
+//         listappointments()
+//             .then((response) => {
+//                 setAppointments(response.data);
+//             })
+//             .catch((error) => {
+//                 console.error('Error Fetching appointments', error);
+//             })
+//     }, [])
+//     function AddAppointmentPath() {
+//         navigator2('/add-appointment');
+//     }
+//     // const handleDelete = (id) => {
+//     //     if (window.confirm("Are you sure you want to delete this appointment?")) {
+//     //       api.delete(`/Aapi/${id}`)
+//     //         .then(() => setAppointments(appointments.filter(appt => appt.id !== id)))
+//     //         .catch((error) => console.error("Delete failed", error));
+//     //     }
+//     //   };
+
+//     return (
+//         <div className='container'>
+//             <h2>List Of Appointments</h2>
+//             {(role ==='SUPER_ADMIN' || role === 'ADMIN') &&
+//             (<button className='btn btn-primary mb-2' onClick={AddAppointmentPath}>Add Appointment</button>)}
+//             <table className='table table-striped table-bordered'>
+//                 <thead>
+//                     <tr>
+//                         <th>Appointment id</th>
+//                         <th>Appointment Time</th>
+//                         <th>Doctor id</th>
+//                         <th>Patient id</th>
+//                         <th>Actions</th>
+//                     </tr>
+//                 </thead>
+//                 <tbody>
+//                     {
+//                         appointments.map(
+//                             appointment =>
+//                                 <tr key={appointment.id}>
+//                                     <td>{appointment.id}</td>
+//                                     <td>{appointment.appointmentTime}</td>
+//                                     <td>{appointment.doctorId || "N/A"}</td>
+//                                     <td>{appointment.patientId || "N/A"}</td>
+//                                     <td>
+//                                         {(role === 'SUPER_ADMIN' || role === 'ADMIN') && (
+//                                             <button
+//                                                 className="btn btn-warning btn-sm me-2"
+//                                                 onClick={() => navigator2(`/edit-appointment/${appointment.id}`)}
+//                                             >
+//                                                 Edit 
+//                                             </button>
+//                                         )}
+//                                         {role === 'SUPER_ADMIN' && (
+//                                             <button
+//                                                 className="btn btn-danger btn-sm"
+//                                                 onClick={() => navigator2(`/delete-appointment/${appointment.id}`)}
+//                                             >
+//                                                 Delete
+//                                             </button>
+//                                         )}
+//                                     </td>
+
+
+//                                 </tr>
+//                         )
+//                     }
+//                 </tbody>
+//             </table>
+//         </div>
+//     )
+// }
+
+// export default Listappointmentsimport React, { useEffect, useState } from 'react';
+// import { listDoctors } from './CommonUrl';
+// import { useNavigate } from 'react-router-dom';
+// import { getCurrentRole } from './Auth';
+
+// const ListDoctors = () => {
+//     const [doctors, setDoctors] = useState([]);
+//     const [error, setError] = useState('');
+//     const [loading, setLoading] = useState(true);
+//     const navigate = useNavigate();
+//     const role = getCurrentRole();
+
+//     useEffect(() => {
+//         const fetchDoctors = async () => {
+//             try {
+//                 const response = await listDoctors();
+//                 setDoctors(response.data);
+//             } catch (error) {
+//                 console.error('Error fetching doctors:', error);
+//                 setError('Failed to load doctors. Please try again.');
+//             } finally {
+//                 setLoading(false);
+//             }
+//         };
+
+//         fetchDoctors();
+//     }, []);
+
+//     if (loading) return <div className="container mt-4">Loading doctors...</div>;
+//     if (error) return <div className="container alert alert-danger mt-4">{error}</div>;
+
+//     return (
+//         <div className="container">
+//             <h2 className="text-center">List Of Doctors</h2>
+//             {(role ==='SUPER_ADMIN' || role === 'ADMIN') &&
+//             (<button
+//                 className="btn btn-primary mb-4"
+//                 onClick={() => navigate('/add-doctor')}
+//             >
+//                 Add Doctor
+//             </button>)}
+
+//             <div className="table-responsive">
+//                 {doctors.length > 0 ? (
+//                     <table className="table table-striped table-bordered">
+//                         <thead>
+//                             <tr>
+//                                 <th>Doctor Id</th>
+//                                 <th>Name</th>
+//                                 <th>Phone</th>
+//                                 <th>Gender</th>
+//                                 <th>Available</th>
+//                                 <th>Actions</th>
+//                             </tr>
+//                         </thead>
+//                         <tbody>
+//                             {doctors.map((doctor) => (
+//                                 <tr key={doctor.id}>
+//                                     <td>{doctor.id}</td>
+//                                     <td>{doctor.name}</td>
+//                                     <td>{doctor.phone}</td>
+//                                     <td>{doctor.gender}</td>
+//                                     <td>{doctor.available}</td>
+//                                     <td>
+//                                         {(role === 'SUPER_ADMIN' || role === 'ADMIN') && (
+//                                             <button
+//                                                 className="btn btn-warning btn-sm me-2"
+//                                                 onClick={() => navigate(`/edit-doctor/${doctor.id}`)}
+//                                             >
+//                                                 Edit
+//                                             </button>
+//                                         )}
+//                                         {role === 'SUPER_ADMIN' && (
+//                                             <button
+//                                                 className="btn btn-danger btn-sm"
+//                                                 onClick={() => navigate(`/delete-doctor/${doctor.id}`)}
+//                                             >
+//                                                 Delete
+//                                             </button>
+//                                         )}
+//                                     </td>
+
+//                                 </tr>
+//                             ))}
+//                         </tbody>
+//                     </table>
+//                 ) : (
+//                     <div className="alert alert-info">No doctors found</div>
+//                 )}
+//             </div>
+//         </div>
+//     );
+// };
+
+// export default ListDoctors;
+// import React, { useEffect, useState } from 'react';
+// import { listPatients } from './CommonUrl';
+// import { useNavigate } from 'react-router-dom';
+// import { getCurrentRole } from './Auth';
+
+
+// const ListPatients = () => {
+//     const [patients, setPatients] = useState([]);
+//     const [error, setError] = useState('');
+//     const [loading, setLoading] = useState(true);
+//     const navigate = useNavigate();
+   
+
+//     const role = getCurrentRole();
+
+//     useEffect(() => {
+//         const fetchPatients = async () => {
+//             try {
+//                 const response = await listPatients();
+//                 setPatients(response.data);
+//             } catch (error) {
+//                 console.error('Error fetching patients:', error);
+//                 setError('Failed to load patients. Please try again.');
+//             } finally {
+//                 setLoading(false);
+//             }
+//         };
+
+//         fetchPatients();
+//     }, []);
+
+//     if (loading) return <div className="container mt-4">Loading patients...</div>;
+//     if (error) return <div className="container alert alert-danger mt-4">{error}</div>;
+
+//     return (
+//         <div className="container">
+//             <h2 className="text-center">List Of Patients</h2>
+//             {(role ==='SUPER_ADMIN' || role === 'ADMIN') && (<button
+//                 className="btn btn-primary mb-4"
+//                 onClick={() => navigate('/add-patient')}
+//             >
+//                 Add Patient
+//             </button>)}
+
+//             <div className="table-responsive">
+//                 {patients.length > 0 ? (
+//                     <table className="table table-striped table-bordered">
+//                         <thead>
+//                             <tr>
+//                                 <th>Patient Id</th>
+//                                 <th>First Name</th>
+//                                 <th>Last Name</th>
+//                                 <th>Phone No</th>
+//                                 <th>Address</th>
+//                                 <th>Gender</th>
+//                                 <th>Actions</th>
+//                             </tr>
+//                         </thead>
+//                         <tbody>
+//                             {patients.map((patient) => (
+//                                 <tr key={patient.id}>
+//                                     <td>{patient.id}</td>
+//                                     <td>{patient.firstName}</td>
+//                                     <td>{patient.lastName}</td>
+//                                     <td>{patient.phone}</td>
+//                                     <td>{patient.address}</td>
+//                                     <td>{patient.gender}</td>
+//                                     <td>
+//                                         {(role === 'SUPER_ADMIN' || role === 'ADMIN') && (
+//                                             <button
+//                                                 className="btn btn-warning btn-sm me-2"
+//                                                 onClick={() => navigate(`/edit-patient/${patient.id}`)}
+//                                             >
+//                                                 Edit
+//                                             </button>
+//                                         )}
+//                                         {role === 'SUPER_ADMIN' && (
+//                                             <button
+//                                                 className="btn btn-danger btn-sm"
+//                                                 onClick={() => navigate(`/delete-patient/${patient.id}`)}
+//                                             >
+//                                                 Delete
+//                                             </button>
+//                                         )}
+//                                     </td>
+
+//                                 </tr>
+//                             ))}
+//                         </tbody>
+//                     </table>
+//                 ) : (
+//                     <div className="alert alert-info">No patients found</div>
+//                 )}
+//             </div>
+//         </div>
+//     );
+// };
+
+// export default ListPatients;
+// import React, { useState, useEffect } from 'react';
+// import { useNavigate, Link } from 'react-router-dom';
+// import api from './api';
+
+// const Login = ({ onLogin }) => {
+//     const [username, setUsername] = useState('');
+//     const [password, setPassword] = useState('');
+//     const [error, setError] = useState('');
+//     const [showForgotPassword, setShowForgotPassword] = useState(false);
+//     const [email, setEmail] = useState('');
+//     const [loading, setLoading] = useState(false);
+//     const navigate = useNavigate();
+
+//     // Redirect away if already logged in
+//     useEffect(() => {
+//         const token = localStorage.getItem('token');
+//         if (token) {
+//             navigate('/patient', { replace: true });
+//         }
+//     }, [navigate]);
+
+//     const handleLogin = async (e) => {
+//         e.preventDefault();
+//         setLoading(true);
+//         setError('');
+
+//         try {
+//             const response = await api.post('/api/login', { username, password });
+
+//             if (response.data.token) {
+//                 // Store token and role (first one assumed)
+//                 localStorage.setItem('token', response.data.token);
+//                 localStorage.setItem('role', response.data.roles[0].toUpperCase());
+
+
+//                 if (onLogin) {
+//                     onLogin(response.data.token, response.data.roles[0]);
+//                 }
+
+//                 // Navigate to default page after login
+//                 navigate('/patient', { replace: true });
+//             } else {
+//                 setError("Invalid response format from server.");
+//             }
+//         } catch (error) {
+//             if (error.response?.status === 403) {
+//                 setError('Your account is not yet approved. Please contact administrator.');
+//             } else {
+//                 setError(error.response?.data?.message || 'Login failed. Please check your credentials.');
+//             }
+//         } finally {
+//             setLoading(false);
+//         }
+//     };
+
+//     const handleForgotPassword = async (e) => {
+//         e.preventDefault();
+//         try {
+//             await api.post('/api/forgot-password', { email });
+//             setError('Password reset link sent to your email');
+//         } catch (error) {
+//             setError(error.response?.data?.message || 'Failed to send reset link');
+//         }
+//     };
+
+//     return (
+//         <div className="container mt-5 d-flex justify-content-center">
+//             <div className="card p-4 shadow" style={{ width: '100%', maxWidth: '400px' }}>
+//                 {!showForgotPassword ? (
+//                     <form onSubmit={handleLogin}>
+//                         <h3 className="text-center mb-4">Login</h3>
+//                         {error && <div className="alert alert-danger">{error}</div>}
+//                         <div className="mb-3">
+//                             <input
+//                                 type="text"
+//                                 className="form-control"
+//                                 placeholder="Username"
+//                                 value={username}
+//                                 onChange={(e) => setUsername(e.target.value)}
+//                                 required
+//                             />
+//                         </div>
+//                         <div className="mb-3">
+//                             <input
+//                                 type="password"
+//                                 className="form-control"
+//                                 placeholder="Password"
+//                                 value={password}
+//                                 onChange={(e) => setPassword(e.target.value)}
+//                                 required
+//                             />
+//                         </div>
+//                         <div className="d-grid mb-2">
+//                             <button type="submit" className="btn btn-primary" disabled={loading}>
+//                                 {loading ? 'Logging in...' : 'Login'}
+//                             </button>
+//                         </div>
+//                         <p className="text-center text-primary" role="button" onClick={() => setShowForgotPassword(true)}>
+//                             Forgot Password?
+//                         </p>
+//                         <div className="mt-3 text-center">
+//                             Don't have an account?{' '}
+//                             <Link to="/signup" className="text-decoration-none">Sign up here</Link>
+//                         </div>
+//                     </form>
+//                 ) : (
+//                     <form onSubmit={handleForgotPassword}>
+//                         <h3 className="text-center mb-4">Reset Password</h3>
+//                         {error && <div className="alert alert-info">{error}</div>}
+//                         <div className="mb-3">
+//                             <input
+//                                 type="email"
+//                                 className="form-control"
+//                                 placeholder="Your Email"
+//                                 value={email}
+//                                 onChange={(e) => setEmail(e.target.value)}
+//                                 required
+//                             />
+//                         </div>
+//                         <div className="d-grid mb-2">
+//                             <button type="submit" className="btn btn-warning">Send Reset Link</button>
+//                         </div>
+//                         <p className="text-center text-secondary" role="button" onClick={() => setShowForgotPassword(false)}>
+//                             Back to Login
+//                         </p>
+//                     </form>
+//                 )}
+//             </div>
+//         </div>
+//     );
+// };
+
+// export default Login;
+// import React from 'react';
+// import { Navigate, Outlet } from 'react-router-dom';
+
+// const ProtectedRoute = ({ allowedRoles }) => {
+//   const token = localStorage.getItem('token');
+//   const role = localStorage.getItem('role');
+
+//   // Debug logs (remove in production)
+//   console.log("ProtectedRoute: token =", token);
+//   console.log("ProtectedRoute: role =", role);
+//   console.log("Allowed Roles:", allowedRoles);
+
+//   // If no token or no role, redirect to login
+//   if (!token || !role || role === "null") {
+//     return <Navigate to="/login" replace />;
+//   }
+
+//   // If role is not allowed, redirect to login or unauthorized page
+//   if (!allowedRoles.includes(role)) {
+//     return <Navigate to="/rolecheck" replace />;
+//   }
+
+//   // If authorized, render child routes
+//   return <Outlet />;
+// };
+
+// export default ProtectedRoute;
+// // src/components/Signup.js
+// import React, { useState } from "react";
+// import api from "./api";
+
+// const Signup = () => {
+//     const [form, setForm] = useState({
+//         username: '',
+//         email: '',
+//         password: '',
+//         role: 'ADMIN' // Default role
+//     });
+//     const [confirmPassword, setConfirmPassword] = useState('');
+//     const [error, setError] = useState('');
+//     const [success, setSuccess] = useState('');
+
+//     const handleSubmit = async (e) => {
+//         e.preventDefault();
+//         if (form.password !== confirmPassword) {
+//             setError("Passwords don't match");
+//             return;
+//         }
+
+//         try {
+//             const response = await api.post('/api/register', form);
+//             setSuccess('Registration successful! Waiting for admin approval.');
+//             setError('');
+//             // Clear form after successful submission
+//             setForm({
+//                 username: '',
+//                 email: '',
+//                 password: '',
+//                 role: ''
+//             });
+//             setConfirmPassword('');
+//         } catch (error) {
+//             console.error('Registration error:', error);
+//             setSuccess('');
+//             if (error.response) {
+//                 setError(error.response.data.message || 
+//                         error.response.data || 
+//                         'Registration failed');
+//             } else {
+//                 setError('Registration failed. Please try again later.');
+//             }
+//         }
+//     };
+    
+
+//     return (
+//         <div className="container mt-5" style={{ maxWidth: '500px' }}>
+//             <div className="card shadow">
+//                 <div className="card-body">
+//                     <h2 className="text-center mb-4">Create Account</h2>
+                    
+//                     {error && (
+//                         <div className="alert alert-danger alert-dismissible fade show">
+//                             {error}
+//                             <button 
+//                                 type="button" 
+//                                 className="btn-close" 
+//                                 onClick={() => setError('')}
+//                             />
+//                         </div>  
+//                     )}
+                    
+//                     {success && (
+//                         <div className="alert alert-success alert-dismissible fade show">
+//                             {success}
+//                             <button 
+//                                 type="button" 
+//                                 className="btn-close" 
+//                                 onClick={() => setSuccess('')}
+//                             />
+//                         </div>
+//                     )}
+
+//                     <form onSubmit={handleSubmit}>
+//                         <div className="mb-3">
+//                             <label className="form-label">Username*</label>
+//                             <input 
+//                                 className="form-control"
+//                                 type="text"
+//                                 value={form.username}
+//                                 onChange={(e) => setForm({...form, username: e.target.value})}
+//                                 required
+//                                 minLength="3"
+//                             />
+//                         </div>
+                        
+//                         <div className="mb-3">
+//                             <label className="form-label">Email*</label>
+//                             <input 
+//                                 className="form-control"
+//                                 type="email"
+//                                 value={form.email}
+//                                 onChange={(e) => setForm({...form, email: e.target.value})}
+//                                 required
+//                             />
+//                         </div>
+                        
+//                         <div className="mb-3">
+//                             <label className="form-label">Password* (min 8 characters)</label>
+//                             <input 
+//                                 className="form-control"
+//                                 type="password"
+//                                 value={form.password}
+//                                 onChange={(e) => setForm({...form, password: e.target.value})}
+//                                 required
+//                                 minLength="8"
+//                             />
+//                         </div>
+                        
+//                         <div className="mb-3">
+//                             <label className="form-label">Confirm Password*</label>
+//                             <input 
+//                                 className="form-control"
+//                                 type="password"
+//                                 value={confirmPassword}
+//                                 onChange={(e) => setConfirmPassword(e.target.value)}
+//                                 required
+//                             />
+//                         </div>
+                        
+//                         <div className="mb-4">
+//                             <label className="form-label">Account Type*</label>
+//                             <select
+//                                 className="form-select"
+//                                 value={form.role}
+//                                 onChange={(e) => setForm({...form, role: e.target.value})}
+//                                 required
+//                             >
+//                                 <option value="ADMIN">Admin</option>
+//                                 <option value="DOCTOR">Doctor</option>
+//                             </select>
+//                             <small className="text-muted">
+//                                 {form.role} accounts require super admin approval
+//                             </small>
+//                         </div>
+                        
+//                         <div className="d-grid gap-2">
+//                             <button type="submit" className="btn btn-primary">
+//                                 Register
+//                             </button>
+//                         </div>
+//                     </form>
+                    
+//                     <div className="mt-3 text-center">
+//                         Already have an account?{' '}
+//                         <a href="/login" className="text-decoration-none">
+//                             Login here
+//                         </a>
+//                     </div>
+//                 </div>
+//             </div>
+            
+//         </div>
+//     );
+// };
+
+// export default Signup;import React, { useEffect, useState, useCallback } from 'react';
+// import api from './api';
+
+// const UserManagement = () => {
+//     const [users, setUsers] = useState([]);
+//     const [pendingUsers, setPendingUsers] = useState([]);
+//     const [loading, setLoading] = useState(true);
+//     const [error, setError] = useState('');
+//     const [success, setSuccess] = useState('');
+//     const [searchTerm, setSearchTerm] = useState('');
+//     const [sortConfig, setSortConfig] = useState({ key: 'username', direction: 'asc' });
+
+//     const normalizeUser = (user) => ({
+//         ...user,
+//         username: user.username || '',
+//         email: user.email || '',
+//         roles: user.roles || []
+//     });
+
+//     const fetchUsers = useCallback(async () => {
+//         try {
+//             const [allUsersResponse, pendingResponse] = await Promise.all([
+//                 api.get('/api/users?approved=true'),
+//                 api.get('/api/users?approved=false')
+//             ]);
+
+//             const filteredUsers = allUsersResponse.data
+//                 .filter(user => !user.roles.includes('SUPER_ADMIN'))
+//                 .map(normalizeUser);
+
+//             const filteredPending = pendingResponse.data
+//                 .filter(user => !user.roles.includes('SUPER_ADMIN'))
+//                 .map(normalizeUser);
+
+//             setUsers(filteredUsers);
+//             setPendingUsers(filteredPending);
+//         } catch (error) {
+//             setError('Failed to load users. Please refresh the page.');
+//             console.error('Fetch error:', error);
+//         } finally {
+//             setLoading(false);
+//         }
+//     }, []);
+
+//     useEffect(() => {
+//         fetchUsers();
+//     }, [fetchUsers]);
+
+//     // Approve user without changing role
+//     const handleApprove = async (userId) => {
+//         try {
+//             await api.patch(`/api/users/${userId}/approve`, { approved: true });
+//             await fetchUsers();
+//             setSuccess('User approved successfully');
+//             setTimeout(() => setSuccess(''), 3000);
+//         } catch (error) {
+//             setError(error.response?.data?.message || 'Approval failed. Please try again.');
+//         }
+//     };
+
+//     const handleReject = async (userId) => {
+//         if (window.confirm('Are you sure you want to reject this user?')) {
+//             try {
+//                 await api.delete(`/api/users/${userId}`);
+//                 await fetchUsers();
+//                 setSuccess('User rejected successfully');
+//                 setTimeout(() => setSuccess(''), 3000);
+//             } catch (error) {
+//                 setError(error.response?.data?.message || 'Rejection failed. Please try again.');
+//             }
+//         }
+//     };
+
+//     const handleDeleteUser = async (userId) => {
+//         if (window.confirm('Permanently delete this user account?')) {
+//             try {
+//                 await api.delete(`/api/users/${userId}`);
+//                 await fetchUsers();
+//                 setSuccess('User deleted successfully');
+//                 setTimeout(() => setSuccess(''), 3000);
+//             } catch (error) {
+//                 setError(error.response?.data?.message || 'Deletion failed. Please try again.');
+//             }
+//         }
+//     };
+
+//     const handleRoleChange = async (userId, newRole) => {
+//         try {
+//             await api.put(`/api/users/${userId}/role`, { role: newRole });
+//             await fetchUsers();
+//             setSuccess('User role updated successfully');
+//             setTimeout(() => setSuccess(''), 3000);
+//         } catch (error) {
+//             setError(error.response?.data?.message || 'Role update failed. Please try again.');
+//         }
+//     };
+
+//     const handleSort = (key) => {
+//         let direction = 'asc';
+//         if (sortConfig.key === key && sortConfig.direction === 'asc') {
+//             direction = 'desc';
+//         }
+//         setSortConfig({ key, direction });
+//     };
+
+//     const sortedUsers = [...users].sort((a, b) => {
+//         if (a[sortConfig.key] < b[sortConfig.key]) {
+//             return sortConfig.direction === 'asc' ? -1 : 1;
+//         }
+//         if (a[sortConfig.key] > b[sortConfig.key]) {
+//             return sortConfig.direction === 'asc' ? 1 : -1;
+//         }
+//         return 0;
+//     });
+
+//     const filteredPendingUsers = pendingUsers.filter(user =>
+//         user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//         user.email.toLowerCase().includes(searchTerm.toLowerCase())
+//     );
+
+//     const filteredUsers = sortedUsers.filter(user =>
+//         user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//         user.email.toLowerCase().includes(searchTerm.toLowerCase())
+//     );
+
+//     if (loading) {
+//         return (
+//             <div className="container mt-4 text-center">
+//                 <div className="spinner-border text-primary" role="status">
+//                     <span className="visually-hidden">Loading...</span>
+//                 </div>
+//                 <p>Loading user data...</p>
+//             </div>
+//         );
+//     }
+
+//     return (
+//         <div className="container">
+//             <h2 className="text-center mb-4">User Management</h2>
+
+//             {success && (
+//                 <div className="alert alert-success alert-dismissible fade show">
+//                     {success}
+//                     <button
+//                         type="button"
+//                         className="btn-close"
+//                         onClick={() => setSuccess('')}
+//                         aria-label="Close"
+//                     />
+//                 </div>
+//             )}
+//             {error && (
+//                 <div className="alert alert-danger alert-dismissible fade show">
+//                     {error}
+//                     <button
+//                         type="button"
+//                         className="btn-close"
+//                         onClick={() => setError('')}
+//                         aria-label="Close"
+//                     />
+//                 </div>
+//             )}
+
+//             <div className="mb-3">
+//                 <input
+//                     type="text"
+//                     className="form-control"
+//                     placeholder="Search users..."
+//                     value={searchTerm}
+//                     onChange={(e) => setSearchTerm(e.target.value)}
+//                 />
+//             </div>
+
+//             {/* Pending Approvals Table */}
+//             <div className="card mb-4">
+//                 <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+//                     <h4 className="mb-0">
+//                         Pending Approvals
+//                         {filteredPendingUsers.length > 0 && (
+//                             <span className="badge bg-warning ms-2">
+//                                 {filteredPendingUsers.length}
+//                             </span>
+//                         )}
+//                     </h4>
+//                 </div>
+//                 <div className="card-body">
+//                     {filteredPendingUsers.length > 0 ? (
+//                         <div className="table-responsive">
+//                             <table className="table table-hover align-middle">
+//                                 <thead>
+//                                     <tr>
+//                                         <th onClick={() => handleSort('id')}>
+//                                             ID {sortConfig.key === 'id' && (
+//                                                 <i className={`bi bi-chevron-${sortConfig.direction === 'asc' ? 'up' : 'down'}`} />
+//                                             )}
+//                                         </th>
+//                                         <th onClick={() => handleSort('username')}>
+//                                             Username {sortConfig.key === 'username' && (
+//                                                 <i className={`bi bi-chevron-${sortConfig.direction === 'asc' ? 'up' : 'down'}`} />
+//                                             )}
+//                                         </th>
+//                                         <th>Email</th>
+//                                         <th>Role</th> {/* Show role here */}
+//                                         <th>Actions</th>
+//                                     </tr>
+//                                 </thead>
+//                                 <tbody>
+//                                     {filteredPendingUsers.map(user => (
+//                                         <tr key={user.id}>
+//                                             <td>{user.id}</td>
+//                                             <td>{user.username}</td>
+//                                             <td>{user.email}</td>
+//                                             <td>{user.roles[0]}</td> {/* Role displayed, no edit */}
+//                                             <td>
+//                                                 <div className="btn-group btn-group-sm" role="group">
+//                                                     <button
+//                                                         className="btn btn-success"
+//                                                         onClick={() => handleApprove(user.id)}
+//                                                         title="Approve User"
+//                                                     >
+//                                                         <i className="bi bi-check-lg" /> Approve
+//                                                     </button>
+//                                                     <button
+//                                                         className="btn btn-danger"
+//                                                         onClick={() => handleReject(user.id)}
+//                                                         title="Reject User"
+//                                                     >
+//                                                         <i className="bi bi-x-lg" /> Reject
+//                                                     </button>
+//                                                 </div>
+//                                             </td>
+//                                         </tr>
+//                                     ))}
+//                                 </tbody>
+//                             </table>
+//                         </div>
+//                     ) : (
+//                         <div className="alert alert-info mb-0">
+//                             No pending user approvals found
+//                         </div>
+//                     )}
+//                 </div>
+//             </div>
+
+//             {/* Registered Users Table */}
+//             <div className="card">
+//                 <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+//                     <h4 className="mb-0">Registered Users</h4>
+//                     <button
+//                         className="btn btn-sm btn-light"
+//                         onClick={fetchUsers}
+//                         title="Refresh Data"
+//                     >
+//                         <i className="bi bi-arrow-clockwise" />
+//                     </button>
+//                 </div>
+//                 <div className="card-body">
+//                     <div className="table-responsive">
+//                         <table className="table table-hover align-middle">
+//                             <thead>
+//                                 <tr>
+//                                     <th onClick={() => handleSort('id')}>
+//                                         ID {sortConfig.key === 'id' && (
+//                                             <i className={`bi bi-chevron-${sortConfig.direction === 'asc' ? 'up' : 'down'}`} />
+//                                         )}
+//                                     </th>
+//                                     <th onClick={() => handleSort('username')}>
+//                                         Username {sortConfig.key === 'username' && (
+//                                             <i className={`bi bi-chevron-${sortConfig.direction === 'asc' ? 'up' : 'down'}`} />
+//                                         )}
+//                                     </th>
+//                                     <th>Email</th>
+//                                     <th>Role</th>
+//                                     <th>Actions</th>
+//                                 </tr>
+//                             </thead>
+//                             <tbody>
+//                                 {filteredUsers.length > 0 ? (
+//                                     filteredUsers.map(user => (
+//                                         <tr key={user.id}>
+//                                             <td>{user.id}</td>
+//                                             <td>{user.username}</td>
+//                                             <td>{user.email}</td>
+//                                             <td>
+//                                                 <select
+//                                                     value={user.roles[0]}
+//                                                     onChange={(e) => handleRoleChange(user.id, e.target.value)}
+//                                                     className="form-select form-select-sm"
+//                                                 >
+//                                                     <option value="ADMIN">Admin</option>
+//                                                     <option value="DOCTOR">Doctor</option>
+//                                                 </select>
+//                                             </td>
+//                                             <td>
+//                                                 <div className="btn-group btn-group-sm" role="group">
+//                                                     <button
+//                                                         className="btn btn-danger"
+//                                                         onClick={() => handleDeleteUser(user.id)}
+//                                                         title="Delete User"
+//                                                     >
+//                                                         <i className="bi bi-trash" /> Delete
+//                                                     </button>
+//                                                 </div>
+//                                             </td>
+//                                         </tr>
+//                                     ))
+//                                 ) : (
+//                                     <tr>
+//                                         <td colSpan="5" className="text-center">
+//                                             <div className="alert alert-info mb-0">
+//                                                 No registered users found
+//                                             </div>
+//                                         </td>
+//                                     </tr>
+//                                 )}
+//                             </tbody>
+//                         </table>
+//                     </div>
+//                 </div>
+//             </div>
+//         </div>
+//     );
+// };
+
+// export default UserManagement;
+// I want hospital medical availability table and medical details...superadmin add tablet pic,tbalet name,count...then doctor add medical details for patient add tablet pic,name,count...after eat,before eat,morning,afternoon,night....when take tablets...if tablet not available in the  hospital medical availability table ....then doctor msg to  shows the medical not available in the hospital...please go to buy outside the hospital buy a medicals to a patient
+// then i want another role...was patient...that patient login which tablet add doctor  that tablet after login shows the tablet pic,name,,count...after eat,before eat,morning,afternoon,night....when take tablets.
